@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="PublishConfigData" autoUpload="Always" serverName="PLUS (3685faea-b971-499d-b112-643acd3d0f7c)">
+    <serverData>
+      <paths name="PLUS (3685faea-b971-499d-b112-643acd3d0f7c)">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/home/beta/beta/CSED/CSED211" local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+    </serverData>
+    <option name="myAutoUpload" value="ALWAYS" />
+  </component>
+</project>

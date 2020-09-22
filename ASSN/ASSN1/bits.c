@@ -175,9 +175,10 @@ NOTES:
  *   Rating: 1
  */
 int bitOr(int x, int y) {
-  return ~(~x & ~y);
+    return ~(~x & ~y);
 }
-/* 
+
+/*
  * addOK - Determine if can compute x+y without overflow
  *   Example: addOK(0x80000000,0x80000000) = 0,
  *            addOK(0x80000000,0x70000000) = 1, 
@@ -186,9 +187,10 @@ int bitOr(int x, int y) {
  *   Rating: 3
  */
 int addOK(int x, int y) {
-  return (( ~((x + y) ^ x) | (x ^ y)) >> 31) & 1;
+    return ((~((x + y) ^ x) | (x ^ y)) >> 31) & 1;
 }
-/* 
+
+/*
  * negate - return -x 
  *   Example: negate(1) = -1.
  *   Legal ops: ! ~ & ^ | + << >>
@@ -196,9 +198,10 @@ int addOK(int x, int y) {
  *   Rating: 2
  */
 int negate(int x) {
-  return ~x + 1;
+    return ~x + 1;
 }
-/* 
+
+/*
  * logicalShift - shift x to the right by n, using a logical shift
  *   Can assume that 0 <= n <= 31
  *   Examples: logicalShift(0x87654321,4) = 0x08765432
@@ -207,8 +210,9 @@ int negate(int x) {
  *   Rating: 3 
  */
 int logicalShift(int x, int n) {
-  return (~(((1 << 31) >> n) << 1)) & (x >> n);
+    return (~(((1 << 31) >> n) << 1)) & (x >> n);
 }
+
 /*
  * bitCount - returns count of number of 1's in word
  *   Examples: bitCount(5) = 2, bitCount(7) = 3
@@ -217,19 +221,20 @@ int logicalShift(int x, int n) {
  *   Rating: 4
  */
 int bitCount(int x) {
-    int mask_16 = (0xff << 8) ^ 0xff;
-    int mask_08 = (mask_16 << 8) ^ mask_16;
-    int mask_04 = (mask_08 << 4) ^ mask_08;
-    int mask_02 = (mask_04 << 2) ^ mask_04;
-    int mask_01 = (mask_02 << 1) ^ mask_02;
+    int mask_16 = (0xff << 8) ^0xff;
+    int mask_08 = (mask_16 << 8) ^mask_16;
+    int mask_04 = (mask_08 << 4) ^mask_08;
+    int mask_02 = (mask_04 << 2) ^mask_04;
+    int mask_01 = (mask_02 << 1) ^mask_02;
 
-    x = (x & mask_01) + ((x >>  1) & mask_01);
-    x = (x & mask_02) + ((x >>  2) & mask_02);
-    x = (x & mask_04) + ((x >>  4) & mask_04);
-    x = (x & mask_08) + ((x >>  8) & mask_08);
+    x = (x & mask_01) + ((x >> 1) & mask_01);
+    x = (x & mask_02) + ((x >> 2) & mask_02);
+    x = (x & mask_04) + ((x >> 4) & mask_04);
+    x = (x & mask_08) + ((x >> 8) & mask_08);
     return (x & mask_16) + ((x >> 16) & mask_16);
 }
-/* 
+
+/*
  * float_neg - Return bit-level equivalent of expression -f for
  *   floating point argument f.
  *   Both the argument and result are passed as unsigned int's, but
@@ -241,13 +246,14 @@ int bitCount(int x) {
  *   Rating: 2
  */
 unsigned float_neg(unsigned uf) {
-    if((0x7F800000 & uf) == 0x7F800000 && (0x7FFFFF & uf)){
+    if ((0x7F800000 & uf) == 0x7F800000 && (0x7FFFFF & uf)) {
         return uf;
     } else {
         return uf ^ 0x80000000;
     }
 }
-/* 
+
+/*
  * float_i2f - Return bit-level equivalent of expression (float) x
  *   Result is returned as unsigned int, but
  *   it is to be interpreted as the bit-level representation of a
@@ -259,41 +265,35 @@ unsigned float_neg(unsigned uf) {
 unsigned float_i2f(int x) {
     int sign = x & 0x80000000;
     int bit = 1;
-    int exp = 0;
     int frac = 0;
     int round = 0;
-    if (x==0){
+    if (x == 0) {
         return 0;
     }
 
-    if(x == 0x80000000){
+    if (x == 0x80000000) {
         return 0xcf000000;
     }
 
-    if (sign){
+    if (sign) {
         x = -x;
     }
 
     while (((x >> bit) != 0) && bit++);
     bit--;
 
-    exp = bit + 127;
-    frac = (x & ~(0xffffffff << bit)) << (23 - bit);
-    if (bit > 23){
-        round = x & 0xff;
-        if ((round > 0x80) || ((round == 0x80) && frac & 1)){
-            frac++;
-            if (frac >> 23) {
-                exp++;
-                frac = 0;
-            }
-        }
+    frac = (x << (31 - bit)) & 0x7fffffff;
+    round = frac & 0xff;
+    frac = frac >> 8;
+    if ((bit > 23) && (round > 0x80 || ((round == 0x80) && (frac & 1)))) {
+        frac++;
     }
 
+    return sign + ((bit + 127) << 23) + frac;
 
-  return sign | (exp << 23) | frac;
 }
-/* 
+
+/*
  * float_twice - Return bit-level equivalent of expression 2*f for
  *   floating point argument f.
  *   Both the argument and result are passed as unsigned int's, but
@@ -305,45 +305,11 @@ unsigned float_i2f(int x) {
  *   Rating: 4
  */
 unsigned float_twice(unsigned uf) {
-    if((0x7F800000 & uf) == 0x7F800000 && (0x7FFFFF & uf)){
-        // NaN
+    int exp = uf & 0x7f800000;
+    if (exp == 0x7f800000) {
         return uf;
-    } else if (uf & 0x7F800000 & uf){
-        // denormalized
+    } else if (exp == 0) {
         return (uf & 0x80000000) | (uf << 1);
     }
-    // normalized
     return uf + 0x800000;
-}
-
-/*
-* float_abs - Return bit-level equivalent of absolute value of f for
-* floating point argument f.
-* Both the argument and result are passed as unsigned int's, but
-* they are to be interpreted as the bit-level representations of
-* single-precision floating point values.
-* When argument is NaN, return argument..
-* Legal ops: Any integer/unsigned operations incl. ||, &&. also if, while
-* Max ops: 10
-*/
-unsigned float_abs(unsigned uf) {
-    if(((0x7F800000 & uf) == 0x7F800000) && (0x7FFFFF & uf)){
-        return uf;
-    }
-    return uf & 0x7FFFFFFF;
-}
-
-
-/*
-* isGreater - if x > y then return 1, else return 0
-* Example: isGreater(4,5) = 0, isGreater(5,4) = 1
-* Legal ops: ! ~ & ^ | + << >>
-* Max ops: 24
-*/
-int isGreater(int x, int y) {
-    int sign_x = x >> 31;
-    int sign_y = y >> 31;
-    int is_dif_sign = sign_x ^ sign_y;
-
-    return ( is_dif_sign & (sign_y & 1)) | ((!is_dif_sign) & ((((~x + 1) + y) >> 31) & 1));
 }

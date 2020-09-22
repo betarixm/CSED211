@@ -50,6 +50,3 @@ unsigned float_i2f(int);
 unsigned test_float_i2f(int);
 unsigned float_twice(unsigned);
 unsigned test_float_twice(unsigned);
-
-unsigned float_abs(unsigned );
-int isGreater(int, int);
