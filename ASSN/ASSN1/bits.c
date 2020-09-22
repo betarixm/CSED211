@@ -175,6 +175,7 @@ NOTES:
  *   Rating: 1
  */
 int bitOr(int x, int y) {
+    /* 드모르간의 법칙을 이용하면 된다. */
     return ~(~x & ~y);
 }
 
@@ -187,7 +188,14 @@ int bitOr(int x, int y) {
  *   Rating: 3
  */
 int addOK(int x, int y) {
-    return ((~((x + y) ^ x) | (x ^ y)) >> 31) & 1;
+    /*
+     * x와 y의 부호가 다른 경우,
+     * 그리고, x와 y의 부호가 같은데 x와 y를 더한 결과의 부호와 x의 부호가 같다면,
+     * overflow 없이 더할 수 있는 경우라고 말할 수 있다.
+     */
+    int is_x_y_differ = x ^ y /* x와 y의 부호가 다른 경우 */ ;
+    int is_sum_and_x_same = ~((x + y) ^ x) /*x와 y를 더한 결과와 x의 부호가 같은 경우*/;
+    return (( is_x_y_differ | is_sum_and_x_same ) >> 31) & 1; /* 부호 비트만 추출해서 반환 */
 }
 
 /*
@@ -198,6 +206,7 @@ int addOK(int x, int y) {
  *   Rating: 2
  */
 int negate(int x) {
+    /* not을 이용하여 1의 보수를 취한 다음 1을 더하면 negate 할 수 있다. */
     return ~x + 1;
 }
 
@@ -210,7 +219,9 @@ int negate(int x) {
  *   Rating: 3 
  */
 int logicalShift(int x, int n) {
-    return (~(((1 << 31) >> n) << 1)) & (x >> n);
+    /* 우리가 원하는 부분만 자르기 위한 필터를 만들고 적용시켜 구현한다. */
+    int mask = ((1 << 31) >> n) << 1; /* 제일 큰 자리 수 부터 n 개의 비트가 1이 되도록 하는 마스크를 만든다. */
+    return (~mask) & (x >> n); /* mask에 not을 붙여서 우리가 원하는 필터를 만들고, 이를 x >> n (arithmetic shift)한 결과에 and를 통해 적용시킨다. */
 }
 
 /*
@@ -221,17 +232,27 @@ int logicalShift(int x, int n) {
  *   Rating: 4
  */
 int bitCount(int x) {
-    int mask_16 = (0xff << 8) ^0xff;
-    int mask_08 = (mask_16 << 8) ^mask_16;
-    int mask_04 = (mask_08 << 4) ^mask_08;
-    int mask_02 = (mask_04 << 2) ^mask_04;
-    int mask_01 = (mask_02 << 1) ^mask_02;
+    /*
+     * 2비트씩 묶어서 1의 개수를 세고,
+     * 해당 정보를 바탕으로 4비트 안의 1의 개수, 8비트 안의 1의 개수, 16비트 안의 1의 개수, 32비트 안의 1의 개수를 순서대로 구한다.
+     * 2비트 안의 1의 개수를 구할 때에는, x의 홀수 번째 비트와 (x >> 1)의 홀수번째 비트를 더함으로써,
+     * 그 결과를 2비트씩 묶으면 2비트 안의 1의 개수가 되도록 한다.
+     * 이 이후, 4비트 안의 1의 개수를 구할 때에는, 위의 결과와 (위의 결과 >> 2)의 4n+1, 4n+2번째 비트를 더함으로써,
+     * 그 결과를 4비트씩 묶으면 4비트 안의 1의 개수가 되도록 한다.
+     * 이러한 과정을 word size 안의 1의 개수를 구할 때 까지 반복한다.
+     */
 
-    x = (x & mask_01) + ((x >> 1) & mask_01);
-    x = (x & mask_02) + ((x >> 2) & mask_02);
-    x = (x & mask_04) + ((x >> 4) & mask_04);
-    x = (x & mask_08) + ((x >> 8) & mask_08);
-    return (x & mask_16) + ((x >> 16) & mask_16);
+    int mask_16 = (0xff << 8) ^ 0xff;       /* 32n + 1, ... , 32n + 16 번째 비트 마스크  */
+    int mask_08 = (mask_16 << 8) ^ mask_16; /* 16n + 1, ... , 16n + 8번째 비트 마스크 */
+    int mask_04 = (mask_08 << 4) ^ mask_08; /*  8n + 1, ... , 8n + 4번째 비트 마스크 */
+    int mask_02 = (mask_04 << 2) ^ mask_04; /*  4n + 1, 4n + 2번째 비트 마스크 */
+    int mask_01 = (mask_02 << 1) ^ mask_02; /*  2n + 1번째 비트 마스크 */
+
+    x = (x & mask_01) + ((x >> 1) & mask_01);     /*  2비트 씩 묶어서 셌을 때, 2비트 안의 1의 개수 */
+    x = (x & mask_02) + ((x >> 2) & mask_02);     /*  4비트 안의 1의 개수 */
+    x = (x & mask_04) + ((x >> 4) & mask_04);     /*  8비트 안의 1의 개수 */
+    x = (x & mask_08) + ((x >> 8) & mask_08);     /* 16비트 안의 1의 개수 */
+    return (x & mask_16) + ((x >> 16) & mask_16); /* 32비트 안의 1의 개수 */
 }
 
 /*
@@ -246,9 +267,14 @@ int bitCount(int x) {
  *   Rating: 2
  */
 unsigned float_neg(unsigned uf) {
+    /*
+     * NaN이 아닐 경우에 부호 비트를 바꿔서 반환함으로써 negate한다.
+     */
     if ((0x7F800000 & uf) == 0x7F800000 && (0x7FFFFF & uf)) {
+        /* NaN일 경우에 uf를 그대로 반환한다. */
         return uf;
     } else {
+        /* NaN이 아닐 경우에 부호 비트를 바꿔서 반환한다. */
         return uf ^ 0x80000000;
     }
 }
@@ -264,8 +290,8 @@ unsigned float_neg(unsigned uf) {
  */
 unsigned float_i2f(int x) {
     int sign = x & 0x80000000;
-    int bit = 1;
-    int frac = 0;
+    int exp = 1;
+    int mantissa = 0;
     int round = 0;
     if (x == 0) {
         return 0;
@@ -275,21 +301,30 @@ unsigned float_i2f(int x) {
         return 0xcf000000;
     }
 
-    if (sign) {
+    if (sign) { /* x가 음수인 경우 우선 양수로 바꾼다. */
         x = -x;
     }
 
-    while (((x >> bit) != 0) && bit++);
-    bit--;
+    /* 지수의 크기 (exp)을 구한다. */
+    while (((x >> exp) != 0) && exp++);
+    exp--;
 
-    frac = (x << (31 - bit)) & 0x7fffffff;
-    round = frac & 0xff;
-    frac = frac >> 8;
-    if ((bit > 23) && (round > 0x80 || ((round == 0x80) && (frac & 1)))) {
-        frac++;
+    /* 가수부(mantissa)을 구한다. */
+    mantissa = (x << (31 - exp)) & 0x7fffffff;
+
+    /* 반올림 조건을 위해 맨 아래 한 바이트를 가져온다. */
+    round = mantissa & 0xff;
+
+    /* 반올림을 할 조건의 대상이 되는 수를 구한 후, 8자리를 쉬프트 해서 가수부 자리로 옮긴다.*/
+    mantissa = mantissa >> 8;
+
+    /* 만약, 지수의 크기가 23보다 크고, 반올림을 해야할 조건이라면, rounding 한다.*/
+    if ((exp > 23) && (round > 0x80 || ((round == 0x80) && (mantissa & 1)))) {
+        mantissa++;
     }
 
-    return sign + ((bit + 127) << 23) + frac;
+    /* 부호비트 + 지수부 + 가수부의 결과를 반환한다. */
+    return sign + ((exp + 127) << 23) + mantissa;
 
 }
 
@@ -305,11 +340,18 @@ unsigned float_i2f(int x) {
  *   Rating: 4
  */
 unsigned float_twice(unsigned uf) {
+    /*
+     * 각 경우에 따라서 지수부나 가수부를 조작하여 2배를 만든다.
+     */
+    /* 지수부를 추출한다. */
     int exp = uf & 0x7f800000;
     if (exp == 0x7f800000) {
+        /* NaN인 경우에 그대로 반환한다. */
         return uf;
     } else if (exp == 0) {
+        /* 지수부가 0일 경우에는, 주어진 수를 왼쪽으로 쉬프트 한 후, 부호비트를 붙여서 반환하면 된다. */
         return (uf & 0x80000000) | (uf << 1);
     }
+    /* 나머지의 경우에는, 지수부를 1 증가시키면 2배가 되므로, 그것을 반환하면 된다. */
     return uf + 0x800000;
 }
