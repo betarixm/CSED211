@@ -1,16 +1,26 @@
-//
-// Created by 민재 on 2020/09/09.
-//
-
 #include <stdio.h>
 #include <assert.h>
-
-unsigned rotate_left(unsigned x, int n) {
-    unsigned w = sizeof(unsigned) << 3;
-    return (x << n) | (x >> (w - n));
-}
+#include <time.h>
+#include <stdlib.h>
 
 int main(){
-    assert(rotate_left(0x12345678, 0) == 0x12345678);
+    srand(time(NULL));   // Initialization, should only be called once.
+    while(1){
+        /* Create some arbitrary values */
+        int x = rand();
+        int y = rand();
+        int z = rand();
+        /* Convert to double */
+        double dx = (double) x;
+        double dy = (double) y;
+        double dz = (double) z;
+        if ((dx*dy)*dz!=dx*(dy*dz)){
+            printf("%f\n", (dx*dy)*dz);
+            printf("%f\n", dx*(dy*dz));
+            printf("dx: %f, dy: %f, dz: %f\n", dx, dy, dz);
+            printf("x: %x, y: %x, z: %x\n", x, y, z);
+            break;
+        }
+    }
     return 0;
 }
