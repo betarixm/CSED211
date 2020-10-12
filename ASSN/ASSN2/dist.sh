@@ -1,11 +1,13 @@
 rm -r ./dist
-rm 20190084.zip
+rm bomb84.zip
+rm bomb84.tar
 mkdir dist
 chmod +x bomb
-cp docs/20190084.pdf ./dist
 cp ./* ./dist
+
 cd dist
-
 rm dist.sh
-zip ../20190084.zip ./*
-
+tar -cvf bomb84.tar ./*
+mv bomb84.tar ../
+cd ../
+zip bomb84.zip bomb84.tar
