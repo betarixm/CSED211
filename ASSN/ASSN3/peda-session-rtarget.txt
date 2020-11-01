@@ -1,2 +1,2 @@
-break *0x401867
+tbreak main
 
