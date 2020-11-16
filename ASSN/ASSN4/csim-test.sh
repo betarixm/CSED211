@@ -1,3 +1,5 @@
+make csim
+
 ./csim     -s 1 -E 1 -b 1 -t traces/yi2.trace
 ./csim-ref -s 1 -E 1 -b 1 -t traces/yi2.trace
 
