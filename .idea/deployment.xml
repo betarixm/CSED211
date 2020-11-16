@@ -2,35 +2,14 @@
 <project version="4">
   <component name="PublishConfigData" autoUpload="Always" serverName="PLUS (3685faea-b971-499d-b112-643acd3d0f7c)">
     <serverData>
-      <paths name="MSYS2 (dfad2354-78e4-4c7b-819d-ef9b063dc098)">
+      <paths name="Remote Host (b2ad2551-7c59-4f70-acbf-4677ca4ea6b1)">
         <serverdata>
           <mappings>
-            <mapping local="$PROJECT_DIR$" web="/" />
-          </mappings>
-        </serverdata>
-      </paths>
-      <paths name="PLUS (9633b553-2eba-4a3b-b41a-84c0dfc216f2)">
-        <serverdata>
-          <mappings>
-            <mapping deploy="/tmp/tmp.JP4kk4vIV4" local="$PROJECT_DIR$" />
+            <mapping deploy="/tmp/tmp.Ph7p8eftlH" local="$PROJECT_DIR$" />
           </mappings>
           <excludedPaths>
             <excludedPath local="true" path="$PROJECT_DIR$/cmake-build-debug" />
           </excludedPaths>
-        </serverdata>
-      </paths>
-      <paths name="Remote Host (bd054805-5aff-4f94-aadc-bee1da0ad9d9)">
-        <serverdata>
-          <mappings>
-            <mapping deploy="/tmp/CSED211" local="$PROJECT_DIR$" />
-          </mappings>
-        </serverdata>
-      </paths>
-      <paths name="WSL (8aa26564-c2b7-4839-8447-d0b4e661a24a)">
-        <serverdata>
-          <mappings>
-            <mapping local="$PROJECT_DIR$" web="/" />
-          </mappings>
         </serverdata>
       </paths>
     </serverData>
