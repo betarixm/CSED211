@@ -2,11 +2,12 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <getopt.h>
+#include <math.h>
 #include "cachelab.h"
 
 typedef struct {
     bool valid;
-    int tag;
+    unsigned long long tag;
     int lru_count;
 } Block;
 
@@ -25,13 +26,21 @@ int s = 0, E = 0, b = 0;
 int LRU = 0;
 int hits = 0, misses = 0, evictions = 0;
 
+void printCache(){
+    for(int i = 0; i < cache.num_set; i++){
+        printf("SET %d\n", i);
+        for(int j = 0; j < cache.num_block; j++){
+            printf("Valid: %d, Tag: %llx, LRU: %d\n", cache.arr_set[i].arr_block[j].valid, cache.arr_set[i].arr_block[j].tag, cache.arr_set[i].arr_block[j].lru_count);
+        }
+    }
+}
 void initCache();
 
 void freeCache();
 
 void parseTrace(FILE* file);
 
-void cacheAccess(int addr);
+void cacheAccess(unsigned long long int addr);
 
 int main(int argc, char *argv[]) {
     char *filename;
@@ -73,11 +82,16 @@ int main(int argc, char *argv[]) {
 }
 
 void initCache() {
-    cache.num_set = 2 << s;
+    cache.num_set = (int)pow(2.0, s);
     cache.num_block = E;
     cache.arr_set = malloc(sizeof(Set) * cache.num_set);
     for (int i = 0; i < cache.num_set; ++i) {
-        cache.arr_set[i].arr_block = calloc(sizeof(Block), cache.num_block);
+        cache.arr_set[i].arr_block = malloc(sizeof(Block) * cache.num_block);
+        for(int j = 0; j < E; ++j) {
+            cache.arr_set[i].arr_block[j].valid = false;
+            cache.arr_set[i].arr_block[j].tag = 0;
+            cache.arr_set[i].arr_block[j].lru_count = 0;
+        }
     }
 }
 
@@ -90,39 +104,43 @@ void freeCache() {
 
 void parseTrace(FILE* file) {
     char opt;
-    int addr;
+    unsigned long long addr;
 
-    while (fscanf(file, " %c %x%*c%*d", &opt, &addr) != EOF) {
+    while (fscanf(file, " %c %llx%*c%*d", &opt, &addr) != EOF) {
+        printf("%c %llx: ", opt, addr);
         if (opt == 'I') { continue; }
         cacheAccess(addr);
         if (opt == 'M') { cacheAccess(addr); }
     }
 }
 
-void cacheAccess(int addr) {
-    int INDEX = (addr >> b) & (0x7fffffff >> (31 - s));
-    int TAG = (addr >> (s + b));
-    int idx_block = 0;
-    int eviction_lru = -1;
-    int eviction_block = 0;
+void cacheAccess(unsigned long long int addr) {
+    unsigned int INDEX = (addr >> (unsigned int)b) & ((unsigned int)pow(2, s) - 1);
+    unsigned long long TAG = (addr >> ((unsigned int)s + (unsigned int)b));
+    int idx_block, eviction_block = 0;
+    unsigned long long int eviction_lru = -1;
 
+    printf("idx %d, tag %llx \n", INDEX, TAG);
     Set *set = &cache.arr_set[INDEX];
 
     for(idx_block = 0;; ++idx_block){
         if(idx_block >= E) {
             ++misses;
+            printf("miss ");
             for(int ia = 0; ia < E; ++ia){
                 if(eviction_lru > set->arr_block[ia].lru_count){
                     eviction_block = ia;
                     eviction_lru = set->arr_block[ia].lru_count;
                 }
             }
+            printf("evic: %d\n", eviction_block);
             if(set->arr_block[eviction_block].valid){
                 ++evictions;
+                printf("eviction ");
             }
             set->arr_block[eviction_block].valid = true;
             set->arr_block[eviction_block].tag = TAG;
-            set->arr_block[eviction_block].lru_count = ++LRU;
+            set->arr_block[eviction_block].lru_count = LRU++;
             return;
         }
         if(TAG == set->arr_block[idx_block].tag && set->arr_block[idx_block].valid){
@@ -131,5 +149,6 @@ void cacheAccess(int addr) {
     }
 
     ++hits;
-    set->arr_block[idx_block].lru_count = ++LRU;
+    printf("hit ");
+    set->arr_block[idx_block].lru_count = LRU++;
 }
