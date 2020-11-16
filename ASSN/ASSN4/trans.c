@@ -11,7 +11,9 @@
 #include "cachelab.h"
 
 int is_transpose(int M, int N, int A[N][M], int B[M][N]);
-
+void blocking(int M, int N, int A[N][M], int B[M][N], int ROW, int COL);
+void blocking_diag(int M, int N, int A[N][M], int B[M][N], int ROW, int COL);
+void blocking_64(int M, int N, int A[N][M], int B[M][N], int ROW, int COL);
 /* 
  * transpose_submit - This is the solution transpose function that you
  *     will be graded on for Part B of the assignment. Do not change
@@ -22,7 +24,13 @@ int is_transpose(int M, int N, int A[N][M], int B[M][N]);
 char transpose_submit_desc[] = "Transpose submission";
 void transpose_submit(int M, int N, int A[N][M], int B[M][N])
 {
+    int row, col;
 
+    for(row = 0; row < N; row+=8){
+        for(col = 0; col < M; col+=8){
+            blocking(M, N, A, B, row, col);
+        }
+    }
 }
 
 /* 
@@ -30,6 +38,72 @@ void transpose_submit(int M, int N, int A[N][M], int B[M][N])
  * a simple one below to help you get started. 
  */ 
 
+void blocking(int M, int N, int A[N][M], int B[M][N], int ROW, int COL){
+    if(M == 64 && N == 64){
+        blocking_64(M, N, A, B, ROW, COL);
+        return;
+    }
+    if(ROW == COL){
+        blocking_diag(M, N, A, B, ROW, COL);
+        return;
+    }
+    int row, col;
+    for(row = COL; row < COL + 8 && row < M; ++row){
+        for(col = ROW; col < ROW + 8 && col < N; ++col){
+            B[row][col] = A[col][row];
+        }
+    }
+}
+
+void blocking_diag(int M, int N, int A[N][M], int B[M][N], int ROW, int COL){
+    int row, col, tmp;
+    for(row = ROW; row < N && row < ROW + 8; ++row){
+        tmp = A[row][row];
+        for(col = COL; col < M && col < COL + 8; ++col){
+            if(row == col){
+                continue;
+            }
+            B[col][row] = A[row][col];
+        }
+        B[row][row] = tmp;
+    }
+}
+
+void blocking_64(int M, int N, int A[N][M], int B[M][N], int ROW, int COL){
+    int r0 = A[ROW][COL + 4];
+    int r1 = A[ROW][COL + 5];
+    int r2 = A[ROW][COL + 6];
+    int r3 = A[ROW][COL + 7];
+    int t0, t1, t2, t3;
+    int i = 0;
+
+    for(i = 0; i < 8; ++i){
+        t0 = A[ROW + i][COL + 0];
+        t1 = A[ROW + i][COL + 1];
+        t2 = A[ROW + i][COL + 2];
+        t3 = A[ROW + i][COL + 3];
+        B[COL + 0][ROW + i] = t0;
+        B[COL + 1][ROW + i] = t1;
+        B[COL + 2][ROW + i] = t2;
+        B[COL + 3][ROW + i] = t3;
+    }
+
+    for(i = 7; i > 0; --i){
+        t0 = A[ROW + i][COL + 4];
+        t1 = A[ROW + i][COL + 5];
+        t2 = A[ROW + i][COL + 6];
+        t3 = A[ROW + i][COL + 7];
+        B[COL + 4][ROW + i] = t0;
+        B[COL + 5][ROW + i] = t1;
+        B[COL + 6][ROW + i] = t2;
+        B[COL + 7][ROW + i] = t3;
+    }
+
+    B[COL + 4][ROW] = r0;
+    B[COL + 5][ROW] = r1;
+    B[COL + 6][ROW] = r2;
+    B[COL + 7][ROW] = r3;
+}
 /* 
  * trans - A simple baseline transpose function, not optimized for the cache.
  */
