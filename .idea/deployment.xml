@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" autoUpload="Always" serverName="PLUS (3685faea-b971-499d-b112-643acd3d0f7c)">
+  <component name="PublishConfigData" autoUpload="Always" serverName="PLUS-BETA (4643658b-d47c-4b5e-9607-87996c850714)">
     <serverData>
       <paths name="Remote Host (b2ad2551-7c59-4f70-acbf-4677ca4ea6b1)">
         <serverdata>
           <mappings>
-            <mapping deploy="/tmp/tmp.Ph7p8eftlH" local="$PROJECT_DIR$" />
+            <mapping deploy="/home/beta/beta/CSED/CSED211" local="$PROJECT_DIR$" />
           </mappings>
           <excludedPaths>
             <excludedPath local="true" path="$PROJECT_DIR$/cmake-build-debug" />
