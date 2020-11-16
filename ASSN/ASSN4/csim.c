@@ -59,7 +59,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    if (!(file = fopen(optarg, "r"))) {
+    if (!(file = fopen(filename, "r"))) {
         return 1;
     }
 
