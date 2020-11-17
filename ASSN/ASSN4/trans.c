@@ -1,4 +1,12 @@
-/* 
+/*
+ * Cache Lab: Understanding Cache Memories
+ * Part B: Optimizing Matrix Transpose
+ *
+ * 20190084 권민재
+ * mzg00@postech.ac.kr
+ */
+
+/*
  * trans.c - Matrix transpose B = A^T
  *
  * Each transpose function must have a prototype of the form:
@@ -14,7 +22,7 @@ int is_transpose(int M, int N, int A[N][M], int B[M][N]);
 void blocking(int M, int N, int A[N][M], int B[M][N], int ROW, int COL);
 void blocking_diag(int M, int N, int A[N][M], int B[M][N], int ROW, int COL);
 void blocking_64(int M, int N, int A[N][M], int B[M][N], int ROW, int COL);
-/* 
+/*
  * transpose_submit - This is the solution transpose function that you
  *     will be graded on for Part B of the assignment. Do not change
  *     the description string "Transpose submission", as the driver
@@ -25,10 +33,15 @@ char transpose_submit_desc[] = "Transpose submission";
 void transpose_submit(int M, int N, int A[N][M], int B[M][N])
 {
     int row, col;
-
+    void (*trans_function)(int M, int N, int A[N][M], int B[M][N], int ROW, int COL);
+    if(M == 64 && N == 64){
+        trans_function = blocking_64;
+    } else {
+        trans_function = blocking;
+    }
     for(row = 0; row < N; row+=8){
         for(col = 0; col < M; col+=8){
-            blocking(M, N, A, B, row, col);
+            trans_function(M, N, A, B, row, col);
         }
     }
 }
@@ -39,10 +52,6 @@ void transpose_submit(int M, int N, int A[N][M], int B[M][N])
  */ 
 
 void blocking(int M, int N, int A[N][M], int B[M][N], int ROW, int COL){
-    if(M == 64 && N == 64){
-        blocking_64(M, N, A, B, ROW, COL);
-        return;
-    }
     if(ROW == COL){
         blocking_diag(M, N, A, B, ROW, COL);
         return;
