@@ -35,8 +35,8 @@ void transpose_submit(int M, int N, int A[N][M], int B[M][N])
     // 행렬 탐색을 위한 임시 변수
     int row, col;
 
-    // 사이즈에 따른 transpose 함수 포인
-    void (*trans_function)(int M, int N, int A[N][M], int B[M][N], int ROW, int COL);터
+    // 사이즈에 따른 transpose 함수 포인터
+    void (*trans_function)(int M, int N, int A[N][M], int B[M][N], int ROW, int COL);
 
     // 64 x 64 행렬에는 blocking_64 함수를 지정.
     if(M == 64 && N == 64){
