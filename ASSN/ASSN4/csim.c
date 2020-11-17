@@ -26,14 +26,6 @@ int s = 0, E = 0, b = 0;
 int LRU = 0;
 int hits = 0, misses = 0, evictions = 0;
 
-void printCache(){
-    for(int i = 0; i < cache.num_set; i++){
-        printf("SET %d\n", i);
-        for(int j = 0; j < cache.num_block; j++){
-            printf("Valid: %d, Tag: %llx, LRU: %d\n", cache.arr_set[i].arr_block[j].valid, cache.arr_set[i].arr_block[j].tag, cache.arr_set[i].arr_block[j].lru_count);
-        }
-    }
-}
 void initCache();
 
 void freeCache();
@@ -117,38 +109,36 @@ void parseTrace(FILE* file) {
 void cacheAccess(unsigned long long int addr) {
     unsigned int INDEX = (addr >> (unsigned int)b) & ((unsigned int)pow(2, s) - 1);
     unsigned long long TAG = (addr >> ((unsigned int)s + (unsigned int)b));
-    int idx_block, eviction_block = 0;
+    int block_idx, eviction_block = 0;
     unsigned long long int eviction_lru = -1;
-
+    bool is_hit = false;
     printf("idx %d, tag %llx \n", INDEX, TAG);
     Set *set = &cache.arr_set[INDEX];
 
-    for(idx_block = 0;; ++idx_block){
-        if(idx_block >= E) {
-            ++misses;
-            printf("miss ");
-            for(int ia = 0; ia < E; ++ia){
-                if(eviction_lru > set->arr_block[ia].lru_count){
-                    eviction_block = ia;
-                    eviction_lru = set->arr_block[ia].lru_count;
-                }
-            }
-            printf("evic: %d\n", eviction_block);
-            if(set->arr_block[eviction_block].valid){
-                ++evictions;
-                printf("eviction ");
-            }
-            set->arr_block[eviction_block].valid = true;
-            set->arr_block[eviction_block].tag = TAG;
-            set->arr_block[eviction_block].lru_count = LRU++;
-            return;
-        }
-        if(TAG == set->arr_block[idx_block].tag && set->arr_block[idx_block].valid){
+    for(block_idx = 0; block_idx < E; ++block_idx){
+        if(TAG == set->arr_block[block_idx].tag && set->arr_block[block_idx].valid){
+            is_hit = true;
             break;
         }
     }
 
-    ++hits;
-    printf("hit ");
-    set->arr_block[idx_block].lru_count = LRU++;
+    if(is_hit){
+        ++hits;
+        printf("hit ");
+        set->arr_block[block_idx].lru_count = LRU++;
+    } else {
+        ++misses;
+        for(int eviction_idx = 0; eviction_idx < E; ++eviction_idx){
+            if(eviction_lru > set->arr_block[eviction_idx].lru_count){
+                eviction_block = eviction_idx;
+                eviction_lru = set->arr_block[eviction_idx].lru_count;
+            }
+        }
+        if(set->arr_block[eviction_block].valid){
+            ++evictions;
+        }
+        set->arr_block[eviction_block].valid = true;
+        set->arr_block[eviction_block].tag = TAG;
+        set->arr_block[eviction_block].lru_count = LRU++;
+    }
 }
