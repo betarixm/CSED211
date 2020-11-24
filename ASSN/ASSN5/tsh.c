@@ -1,7 +1,7 @@
 /* 
  * tsh - A tiny shell program with job control
  * 
- * <Put your name and login ID here>
+ * 권민재, mzg00@postech.ac.kr
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -165,7 +165,65 @@ int main(int argc, char **argv)
 */
 void eval(char *cmdline) 
 {
-    return;
+    char* argv[MAXARGS];
+    int isBackgroundJob = parseline(cmdline, argv);
+    sigset_t _sigset;
+    pid_t pidFork;
+    int signalValueList[3] = {SIGINT, SIGCHLD, SIGSTOP};
+    int i = 0;
+    int sigaddResult = 0;
+
+    // If input not valid, return.
+    // i.e. input nothing or input is built in command.
+    if(!argv[0] || builtin_cmd(argv)) {
+        return;
+    }
+
+    // Setting sigset
+    // If failed, handle it with unix_error.
+    if(sigemptyset(&_sigset) < 0){
+        unix_error("[ERROR] sigemptyset");
+    }
+
+    for(i = 0; i < 3; ++i){
+        if(sigaddset(&_sigset, signalValueList[i]) != 0){
+            unix_error("[ERROR] sigaddset");
+        }
+    }
+
+    if(sigprocmask(0, &_sigset, 0) < 0){
+        unix_error("[ERROR] sigprocmask");
+    }
+
+    if((pidFork = fork()) < 0){
+        unix_error("[ERROR] fork");
+    }
+
+    if(pidFork == 0){ // Child Process
+        sigprocmask(SIG_UNBLOCK, &_sigset, 0);
+        if(setpgid(0, 0) < 0){
+            unix_error("[ERROR] setpgid");
+        }
+
+        if(execve(argv[0], argv, environ) < 0){
+            printf("command not found: %s", argv[0]);
+            exit(0);
+        }
+    }
+
+    if(isBackgroundJob){
+        addjob(jobs, pidFork, 2, cmdline);
+        sigprocmask(SIG_UNBLOCK, &_sigset, 0);
+    } else {
+        addjob(jobs, pidFork, 1, cmdline);
+        sigprocmask(1, &_sigset, 0);
+        waitfg(pidFork);
+        return;
+    }
+
+    if(pidFork){
+        printf("[%d] (%d) %s", pid2jid(pidFork), pidFork, cmdline);
+    }
 }
 
 /* 
