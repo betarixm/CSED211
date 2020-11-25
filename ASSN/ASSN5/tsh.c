@@ -306,7 +306,90 @@ int builtin_cmd(char **argv)
  */
 void do_bgfg(char **argv) 
 {
-    return;
+    // parse argv
+    char* cmd = argv[0];
+    char* param;
+
+    // Job or Process ID
+    int jid;
+    pid_t pid;
+
+    // Job
+    struct job_t* job;
+
+    // result
+    int killResult;
+
+    // Check Booleans
+    int isJobId;
+    int isDigit = 1;
+    int isFG;
+
+    // Iterator
+    int i;
+
+    if(!argv[0] || !(strcmp(argv[0], "fg") == 0 || strcmp(argv[0], "bg") == 0)){
+        printf("do_bgfg: Internal error");
+        exit(0);
+    }
+    if(!argv[1]){
+        printf("%s command requires PID or %%jobid argument\n", argv[0]);
+        return;
+    }
+
+    param = argv[1];
+    isJobId = (param[0] == '%');
+
+    for(i = isJobId; ; i++){
+        if(param[i] == '\0'){
+            break;
+        }
+        if(!isdigit(param[i])){
+            isDigit = 0;
+            break;
+        }
+    }
+
+    if(!isDigit) {
+        printf("%s: argument must be a PID or %%jobid\n", cmd);
+        return;
+    }
+
+    if(isJobId) {
+        jid = (int) strtol(param + 1, NULL, 10);
+        job = getjobjid(jobs, jid);
+    } else {
+        pid = strtol(param, NULL, 10);
+        job = getjobpid(jobs, pid);
+    }
+
+    if(!job){
+        if(isJobId){
+            printf("%%%d: No such job\n", jid);
+        } else {
+            printf("(%d): No such process\n", pid);
+        }
+        return;
+    }
+
+    pid = job->pid;
+    isFG = (strcmp(param, "fg") == 0);
+
+    killResult = kill(-pid, SIGCONT);
+
+    if(isFG){
+        if(killResult < 0) {
+            unix_error("kill (fg) error");
+        }
+        job->state = FG;
+        waitfg(pid);
+    } else {
+        if(killResult < 0) {
+            unix_error("kill (bg) error");
+        }
+        job->state = BG;
+        printf("[%d] (%d) %s", job->jid, job->pid, job->cmdline);
+    }
 }
 
 /* 
