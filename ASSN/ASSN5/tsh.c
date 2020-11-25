@@ -430,13 +430,13 @@ void sigchld_handler(int sig)
             deletejob(jobs, pid);
         } else if (WIFSIGNALED(status)) {
             deletejob(jobs, pid);
-            printf("Job [%d] (%d) terminated by signal %d\n", pid2jid(pid), pid, sig);
+            printf("Job [%d] (%d) terminated by signal %d\n", pid2jid(pid), pid, WTERMSIG(status));
         } else if (WIFSTOPPED(status)) {
             if(!(job = getjobpid(jobs, pid))){
                 printf("Lost track of (%d)\n", pid);
             }
             job->state = ST;
-            printf("Job [%d] (%d) stopped by signal %d\n", pid2jid(pid), pid, sig);
+            printf("Job [%d] (%d) stopped by signal %d\n", pid2jid(pid), pid, WSTOPSIG(status));
         }
     }
 }
