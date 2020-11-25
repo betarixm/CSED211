@@ -372,7 +372,7 @@ void do_bgfg(char **argv)
     }
 
     pid = job->pid;
-    isFG = (strcmp(param, "fg") == 0);
+    isFG = (strcmp(cmd, "fg") == 0);
 
     killResult = kill(-pid, SIGCONT);
 
@@ -417,7 +417,6 @@ void waitfg(pid_t pid)
  */
 void sigchld_handler(int sig) 
 {
-    printf("SIGCHLD");
     pid_t pid;
     struct job_t* job;
     int status;
@@ -441,14 +440,13 @@ void sigchld_handler(int sig)
     }
 }
 
-/* 
+/*
  * sigint_handler - The kernel sends a SIGINT to the shell whenver the
  *    user types ctrl-c at the keyboard.  Catch it and send it along
- *    to the foreground job.  
+ *    to the foreground job.
  */
-void sigint_handler(int sig) 
+void sigint_handler(int sig)
 {
-    printf("SIGINT");
     pid_t pid = fgpid(jobs);
     if(pid && (kill(pid, sig) < 0)){
         unix_error("kill (sigint) error");
@@ -458,11 +456,10 @@ void sigint_handler(int sig)
 /*
  * sigtstp_handler - The kernel sends a SIGTSTP to the shell whenever
  *     the user types ctrl-z at the keyboard. Catch it and suspend the
- *     foreground job by sending it a SIGTSTP.  
+ *     foreground job by sending it a SIGTSTP.
  */
-void sigtstp_handler(int sig) 
+void sigtstp_handler(int sig)
 {
-    printf("SIGTSTP");
     pid_t pid = fgpid(jobs);
     if(pid && (kill(pid, sig) < 0)){
         unix_error("kill (tstp) error");
