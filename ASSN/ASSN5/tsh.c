@@ -206,7 +206,7 @@ void eval(char *cmdline)
 
         if(execve(argv[0], argv, environ) < 0){
             printf("%s: Command not found\n", argv[0]);
-            exit(0);
+            exit(1);
         }
     }
 
@@ -417,6 +417,7 @@ void waitfg(pid_t pid)
  */
 void sigchld_handler(int sig) 
 {
+    printf("SIGCHLD");
     pid_t pid;
     struct job_t* job;
     int status;
@@ -447,6 +448,7 @@ void sigchld_handler(int sig)
  */
 void sigint_handler(int sig) 
 {
+    printf("SIGINT");
     pid_t pid = fgpid(jobs);
     if(pid && (kill(pid, sig) < 0)){
         unix_error("kill (sigint) error");
@@ -460,6 +462,7 @@ void sigint_handler(int sig)
  */
 void sigtstp_handler(int sig) 
 {
+    printf("SIGTSTP");
     pid_t pid = fgpid(jobs);
     if(pid && (kill(pid, sig) < 0)){
         unix_error("kill (tstp) error");
