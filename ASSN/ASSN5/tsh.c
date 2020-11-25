@@ -171,7 +171,6 @@ void eval(char *cmdline)
     pid_t pidFork;
     int signalValueList[3] = {SIGINT, SIGCHLD, SIGSTOP};
     int i = 0;
-    int sigaddResult = 0;
 
     // If input not valid, return.
     // i.e. input nothing or input is built in command.
