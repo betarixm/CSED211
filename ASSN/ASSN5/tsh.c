@@ -418,7 +418,27 @@ void waitfg(pid_t pid)
  */
 void sigchld_handler(int sig) 
 {
-    return;
+    pid_t pid;
+    struct job_t* job;
+    int status;
+
+    while((pid = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0) {
+        if(WIFEXITED(status)){
+            if(WTERMSIG(status)){
+                unix_error("waitpid error");
+            }
+            deletejob(jobs, pid);
+        } else if (WIFSIGNALED(status)) {
+            deletejob(jobs, pid);
+            printf("Job [%d] (%d) terminated by signal %d\n", pid2jid(pid), pid, sig);
+        } else if (WIFSTOPPED(status)) {
+            if(!(job = getjobpid(jobs, pid))){
+                printf("Lost track of (%d)\n", pid);
+            }
+            job->state = ST;
+            printf("Job [%d] (%d) stopped by signal %d\n", pid2jid(pid), pid, sig);
+        }
+    }
 }
 
 /* 
