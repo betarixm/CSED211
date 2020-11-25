@@ -85,7 +85,7 @@ void eval(char *cmdline)
     char* argv[MAXARGS];
     pid_t pidFork;
     char* rdFile = parseline(cmdline, argv);
-    if(!rdFile){
+    if(*rdFile == 0){
         unix_error("not appropriate input");
     }
     int fd = open(rdFile, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
