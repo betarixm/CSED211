@@ -91,7 +91,7 @@ void eval(char *cmdline)
     }
 
     if(pidFork == 0){ // Child Process
-        dup2(fd, 1), dup2(fd, 2);
+        dup2(fd, 1);
         close(fd);
         if(execve(argv[0], argv, environ) < 0){
             printf("%s: Command not found\n", argv[0]);
