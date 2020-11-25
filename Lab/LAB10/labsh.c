@@ -85,17 +85,17 @@ void eval(char *cmdline)
     char* argv[MAXARGS];
     pid_t pidFork;
     char* rdFile = parseline(cmdline, argv);
-    if(*rdFile == 0){
-        unix_error("not appropriate input");
-    }
-    int fd = open(rdFile, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+    int fd;
     if((pidFork = fork()) < 0){
         unix_error("fork error");
     }
 
     if(pidFork == 0){ // Child Process
-        dup2(fd, 1);
-        close(fd);
+        if(rdFile != 0){
+            fd = open(rdFile, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+            dup2(fd, 1);
+            close(fd);
+        }
         if(execve(argv[0], argv, environ) < 0){
             printf("%s: Command not found\n", argv[0]);
             exit(1);
