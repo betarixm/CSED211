@@ -182,41 +182,40 @@ void eval(char *cmdline)
     // Setting sigset
     // If failed, handle it with unix_error.
     if(sigemptyset(&_sigset) < 0){
-        unix_error("[ERROR] sigemptyset");
+        unix_error("sigemptyset error");
     }
 
     for(i = 0; i < 3; ++i){
         if(sigaddset(&_sigset, signalValueList[i]) != 0){
-            unix_error("[ERROR] sigaddset");
+            unix_error("sigaddset error");
         }
     }
 
     if(sigprocmask(0, &_sigset, 0) < 0){
-        unix_error("[ERROR] sigprocmask");
+        unix_error("sigprocmask error");
     }
 
     if((pidFork = fork()) < 0){
-        unix_error("[ERROR] fork");
+        unix_error("fork error");
     }
 
     if(pidFork == 0){ // Child Process
         sigprocmask(SIG_UNBLOCK, &_sigset, 0);
         if(setpgid(0, 0) < 0){
-            unix_error("[ERROR] setpgid");
+            unix_error("setpgid error");
         }
 
         if(execve(argv[0], argv, environ) < 0){
-            printf("command not found: %s", argv[0]);
+            printf("%s: Command not found\n", argv[0]);
             exit(0);
         }
     }
 
-    if(isBackgroundJob){
-        addjob(jobs, pidFork, 2, cmdline);
-        sigprocmask(SIG_UNBLOCK, &_sigset, 0);
-    } else {
-        addjob(jobs, pidFork, 1, cmdline);
-        sigprocmask(1, &_sigset, 0);
+    addjob(jobs, pidFork, isBackgroundJob ? BG : FG, cmdline);
+    if(sigprocmask(SIG_UNBLOCK, &_sigset, 0) < 0){
+        unix_error("sigprocmask error");
+    }
+    if(!isBackgroundJob){
         waitfg(pidFork);
         return;
     }
