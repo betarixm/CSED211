@@ -447,9 +447,11 @@ void do_bgfg(char **argv)
  */
 void waitfg(pid_t pid)
 {
-    struct job_t* job = getjobpid(jobs, pid);
+    struct job_t* job = getjobpid(jobs, pid); // pid로부터 Job을 조회
     if(job){
+        // 만약 job이 존재한다면,
         while(job->state == FG){
+            // job의 상태가 FG인 동안 sleep.
             sleep(1);
         }
     }
@@ -468,25 +470,38 @@ void waitfg(pid_t pid)
  */
 void sigchld_handler(int sig) 
 {
-    pid_t pid;
-    struct job_t* job;
-    int status;
+    pid_t pid; // Process ID
+    struct job_t* job; // Job
+    int status; // 상태
 
+    // 자식 프로세스 대기 및 상태 회수
     while((pid = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0) {
-        if (WIFSTOPPED(status)) {
+        if (WIFSTOPPED(status)) { // 자식 프로세스가 정지된 상태일 때
+            // 우선 job을 조회한다.
             job = getjobpid(jobs, pid);
-            if(!job){
+            if(!job){ // job이 존재하지 않는 경우, 에러를 표시하고 종료한다.
                 printf("Lost track of (%d)\n", pid);
+                return;
             }
-            job->state = ST;
+
+            job->state = ST; // Job의 상태를 ST로 설정
+
+            // Job 상태 출력
+            // WSTOPSIG를 통해 프로세스를 정지시킨 시그널 조회
             printf("Job [%d] (%d) stopped by signal %d\n", pid2jid(pid), pid, WSTOPSIG(status));
-        } else if(WIFEXITED(status)){
-            if(WTERMSIG(status)){
+        } else if(WIFEXITED(status)){ // 자식 프로세스가 EXIT된 상태일 때
+            if(WTERMSIG(status)){ // 자식 프로세스를 종료시킨 시그널이 0이 아닐 때
+                // 에러 출력
                 unix_error("waitpid error");
             }
+
+            // Job 삭제
             deletejob(jobs, pid);
-        } else if (WIFSIGNALED(status)) {
-            deletejob(jobs, pid);
+        } else if (WIFSIGNALED(status)) { // 자식 프로세스가 어떤 신호를 받아서 종료되었을 때
+            deletejob(jobs, pid); // job을 우선 삭제
+
+            // Job 상태 출력
+            // WTERMSIG를 통해 종료하게 만든 시그널 출력
             printf("Job [%d] (%d) terminated by signal %d\n", pid2jid(pid), pid, WTERMSIG(status));
         }
     }
@@ -499,7 +514,9 @@ void sigchld_handler(int sig)
  */
 void sigint_handler(int sig)
 {
-    pid_t pid = fgpid(jobs);
+    pid_t pid = fgpid(jobs); // fgpid로 foreground job 조회
+    // pid가 존재할 때, kill 시도.
+    // 실패할 경우 에러 출력
     if(pid && (kill(pid, sig) < 0)){
         unix_error("kill (sigint) error");
     }
@@ -512,7 +529,9 @@ void sigint_handler(int sig)
  */
 void sigtstp_handler(int sig)
 {
-    pid_t pid = fgpid(jobs);
+    pid_t pid = fgpid(jobs); // fgpid로 foreground job 조회
+    // pid가 존재할 때, kill 시도.
+    // 실패할 경우 에러 출력
     if(pid && (kill(pid, sig) < 0)){
         unix_error("kill (tstp) error");
     }
