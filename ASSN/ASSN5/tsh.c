@@ -196,7 +196,7 @@ void eval(char *cmdline)
     }
 
     // sigprocmask를 수행하고, 실패할 경우에는 에러를 표시한다.
-    if(sigprocmask(0, &_sigset, 0) < 0){
+    if(sigprocmask(SIG_BLOCK, &_sigset, 0) < 0){
         unix_error("sigprocmask error");
     }
 
