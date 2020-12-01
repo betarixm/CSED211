@@ -237,7 +237,7 @@ void eval(char *cmdline)
         return;
     }
 
-    // 만약 child process가 아니라면, (즉 높은 확률로 쉘이라면) 실행 정보를 출력한다.
+    // background job이라면, 실행 정보를 출력한다.
     if(pidFork){
         printf("[%d] (%d) %s", pid2jid(pidFork), pidFork, cmdline);
     }
@@ -419,7 +419,7 @@ void do_bgfg(char **argv)
     killResult = kill(-pid, SIGCONT); // 프로세스에 SIGCONT 전송
 
     if(isFG){
-        // Foreground job인 경우
+        // fg인 경우
 
         // 우선 kill에 실패했을 경우 에러를 띄운다.
         if(killResult < 0) {
@@ -430,7 +430,7 @@ void do_bgfg(char **argv)
         job->state = FG;
         waitfg(pid);
     } else {
-        // Background Job인 경우
+        // bg인 경우
 
         // 우선 kill에 실패했을 경우 에러를 띄운다.
         if(killResult < 0) {
