@@ -295,9 +295,9 @@ int builtin_cmd(char **argv)
     } else if (strcmp(cmd, "jobs") == 0) {
         listjobs(jobs);
     } else {
-        return 0;
+        return 1;     /* not a builtin command */
     }
-    return 1;     /* not a builtin command */
+    return 0;
 }
 
 /* 
