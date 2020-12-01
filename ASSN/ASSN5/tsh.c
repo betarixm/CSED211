@@ -220,6 +220,7 @@ void eval(char *cmdline)
             printf("%s: Command not found\n", argv[0]);
             exit(1);
         }
+        return;
     }
 
     // addjob을 통해 Job 배열에 포크된 프로세스 아이디를 추가한다.
