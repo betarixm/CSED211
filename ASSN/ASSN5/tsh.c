@@ -454,7 +454,6 @@ void waitfg(pid_t pid)
             // job의 상태가 FG인 동안 sleep.
             sleep(1);
         }
-        printf("waitfg: Process (%d) no longer the fg process\n", pid);
     }
 }
 
@@ -471,7 +470,6 @@ void waitfg(pid_t pid)
  */
 void sigchld_handler(int sig) 
 {
-    printf("sigchld_handler: entering\n");
     pid_t pid; // Process ID
     struct job_t* job; // Job
     int status; // 상태
@@ -496,20 +494,17 @@ void sigchld_handler(int sig)
                 // 에러 출력
                 unix_error("waitpid error");
             }
-            printf("sigchld_handler: Job [%d] (%d) deleted\n", pid2jid(pid), pid);
-            printf("sigchld_handler: Job [%d] (%d) terminates OK (status %d)\n", pid2jid(pid), pid, WTERMSIG(status));
+
             // Job 삭제
             deletejob(jobs, pid);
         } else if (WIFSIGNALED(status)) { // 자식 프로세스가 어떤 신호를 받아서 종료되었을 때
             deletejob(jobs, pid); // job을 우선 삭제
 
-            printf("sigchld_handler: Job [%d] (%d) deleted\n", pid2jid(pid), pid);
             // Job 상태 출력
             // WTERMSIG를 통해 종료하게 만든 시그널 출력
             printf("Job [%d] (%d) terminated by signal %d\n", pid2jid(pid), pid, WTERMSIG(status));
         }
     }
-    printf("sigchld_handler: exiting\n");
 }
 
 /*
@@ -519,16 +514,12 @@ void sigchld_handler(int sig)
  */
 void sigint_handler(int sig)
 {
-    printf("sigint_handler: entering\n");
     pid_t pid = fgpid(jobs); // fgpid로 foreground job 조회
     // pid가 존재할 때, kill 시도.
     // 실패할 경우 에러 출력
     if(pid && (kill(pid, sig) < 0)){
         unix_error("kill (sigint) error");
-    } else {
-        printf("sigint_handler: Job (%d) killed\n", pid2jid(pid));
     }
-    printf("sigint_handler: exiting\n");
 }
 
 /*
@@ -538,17 +529,12 @@ void sigint_handler(int sig)
  */
 void sigtstp_handler(int sig)
 {
-    printf("sigtstp_handler: entering\n");
     pid_t pid = fgpid(jobs); // fgpid로 foreground job 조회
     // pid가 존재할 때, kill 시도.
     // 실패할 경우 에러 출력
     if(pid && (kill(pid, sig) < 0)){
         unix_error("kill (tstp) error");
-    } else {
-        printf("sigtstp_handler: Job [%d] (%d) stopped\n", pid2jid(pid), pid);
     }
-
-    printf("sigtstp_handler: exiting\n");
 }
 
 /*********************
