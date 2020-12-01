@@ -1,7 +1,7 @@
 /* 
  * tsh - A tiny shell program with job control
  * 
- * 권민재, mzg00@postech.ac.kr
+ * 권민재, mzg00
  */
 #include <stdio.h>
 #include <stdlib.h>
