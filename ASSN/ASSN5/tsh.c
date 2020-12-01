@@ -524,7 +524,7 @@ void sigint_handler(int sig)
     pid_t pid = fgpid(jobs); // fgpid로 foreground job 조회
     // pid가 존재할 때, kill 시도.
     // 실패할 경우 에러 출력
-    if(pid && (kill(-pid, sig) < 0)){
+    if(pid && (kill(pid, sig) < 0)){
         unix_error("kill (sigint) error");
     } else {
         printf("sigint_handler: Job (%d) killed\n", pid2jid(pid));
@@ -543,7 +543,7 @@ void sigtstp_handler(int sig)
     pid_t pid = fgpid(jobs); // fgpid로 foreground job 조회
     // pid가 존재할 때, kill 시도.
     // 실패할 경우 에러 출력
-    if(pid && (kill(-pid, sig) < 0)){
+    if(pid && (kill(pid, sig) < 0)){
         unix_error("kill (tstp) error");
     } else {
         printf("sigtstp_handler: Job [%d] (%d) stopped\n", pid2jid(pid), pid);
