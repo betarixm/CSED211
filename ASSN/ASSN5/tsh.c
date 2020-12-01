@@ -183,7 +183,7 @@ void eval(char *cmdline)
     // sigset을 세팅한다.
     // 만약 실패한다면, unix_error를 이용하여 에러를 표시한다.
 
-    // sigemptyset을 수행하고, 실패했을 때에는 에러를 표시한다.
+    // sigemptyset을 수행하고, 실패했을 때에는 에러를 표시한다..
     if(sigemptyset(&_sigset) < 0){
         unix_error("sigemptyset error");
     }
