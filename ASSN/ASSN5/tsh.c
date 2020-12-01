@@ -196,7 +196,7 @@ void eval(char *cmdline)
     }
 
     // sigprocmask를 수행하고, 실패할 경우에는 에러를 표시한다.
-    if(sigprocmask(0, &_sigset, 0) < 0){
+    if(sigprocmask(SIG_BLOCK, &_sigset, 0) < 0){
         unix_error("sigprocmask error");
     }
 
@@ -220,6 +220,7 @@ void eval(char *cmdline)
             printf("%s: Command not found\n", argv[0]);
             exit(1);
         }
+        return;
     }
 
     // addjob을 통해 Job 배열에 포크된 프로세스 아이디를 추가한다.
@@ -517,7 +518,7 @@ void sigint_handler(int sig)
     pid_t pid = fgpid(jobs); // fgpid로 foreground job 조회
     // pid가 존재할 때, kill 시도.
     // 실패할 경우 에러 출력
-    if(pid && (kill(pid, sig) < 0)){
+    if(pid && (kill(-pid, sig) < 0)){
         unix_error("kill (sigint) error");
     }
 }
@@ -532,7 +533,7 @@ void sigtstp_handler(int sig)
     pid_t pid = fgpid(jobs); // fgpid로 foreground job 조회
     // pid가 존재할 때, kill 시도.
     // 실패할 경우 에러 출력
-    if(pid && (kill(pid, sig) < 0)){
+    if(pid && (kill(-pid, sig) < 0)){
         unix_error("kill (tstp) error");
     }
 }
