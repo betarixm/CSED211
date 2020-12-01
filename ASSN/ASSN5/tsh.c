@@ -165,60 +165,78 @@ int main(int argc, char **argv)
 */
 void eval(char *cmdline) 
 {
-    char* argv[MAXARGS];
-    int isBackgroundJob = parseline(cmdline, argv);
-    sigset_t _sigset;
-    pid_t pidFork;
-    int signalValueList[3] = {SIGINT, SIGCHLD, SIGSTOP};
-    int i = 0;
+    char* argv[MAXARGS]; // 아규먼트 리스트를 담을 배열
+    sigset_t _sigset; // sigset
+    pid_t pidFork; // fork 프로세스 아이디
+    int signalValueList[3] = {SIGINT, SIGCHLD, SIGSTOP}; // 핸들링할 시그널 리스트
+    int i = 0; // 이터레이터
 
-    // If input not valid, return.
-    // i.e. input nothing or input is built in command.
+    // parseline을 통해 argv에 아규먼트 리스트를 세팅하고, 백그라운드 여부를 isBackgroundJob에 저장
+    int isBackgroundJob = parseline(cmdline, argv);
+
+    // 올바르지 않은 입력일 경우 종료.
+    // i.e. 아무것도 입력되지 않았거나, built-in 커맨드인 경우.
     if(!argv[0] || builtin_cmd(argv)) {
         return;
     }
 
-    // Setting sigset
-    // If failed, handle it with unix_error.
+    // sigset을 세팅한다.
+    // 만약 실패한다면, unix_error를 이용하여 에러를 표시한다.
+
+    // sigemptyset을 수행하고, 실패했을 때에는 에러를 표시한다..
     if(sigemptyset(&_sigset) < 0){
         unix_error("sigemptyset error");
     }
 
+    // SIGINT, SIGCHLD, SIGSTOP에 대해 sigaddset을 수행하고, 실패할 경우에는 에러를 표시한다.
     for(i = 0; i < 3; ++i){
         if(sigaddset(&_sigset, signalValueList[i]) != 0){
             unix_error("sigaddset error");
         }
     }
 
+    // sigprocmask를 수행하고, 실패할 경우에는 에러를 표시한다.
     if(sigprocmask(0, &_sigset, 0) < 0){
         unix_error("sigprocmask error");
     }
 
+    // fork를 수행하고, 실패할 경우에는 에러를 표시한다.
     if((pidFork = fork()) < 0){
         unix_error("fork error");
     }
 
-    if(pidFork == 0){ // Child Process
+    // child process인 경우
+    if(pidFork == 0){
+        // 우선, 현재 sigset을 unblock한다.
         sigprocmask(SIG_UNBLOCK, &_sigset, 0);
+
+        // 이후, setpgid를 통해 프로세스 그룹을 설정하고, 실패할 경우에는 에러를 띄운다.
         if(setpgid(0, 0) < 0){
             unix_error("setpgid error");
         }
 
+        // execve를 통해 주어진 인자를 실행하고, 실패할 경우에는 커맨드가 존재하지 않는다는 에러를 띄운다.
         if(execve(argv[0], argv, environ) < 0){
             printf("%s: Command not found\n", argv[0]);
             exit(1);
         }
     }
 
+    // addjob을 통해 Job 배열에 포크된 프로세스 아이디를 추가한다.
     addjob(jobs, pidFork, isBackgroundJob ? BG : FG, cmdline);
+
+    // sigprocmask를 통해 unblock을 수행한다.
     if(sigprocmask(SIG_UNBLOCK, &_sigset, 0) < 0){
         unix_error("sigprocmask error");
     }
+
+    // 만약 백그라운드 Job이 아니라면, Job이 종료될 때 까지 대기한다.
     if(!isBackgroundJob){
         waitfg(pidFork);
         return;
     }
 
+    // 만약 child process가 아니라면, (즉 높은 확률로 쉘이라면) 실행 정보를 출력한다.
     if(pidFork){
         printf("[%d] (%d) %s", pid2jid(pidFork), pidFork, cmdline);
     }
@@ -287,17 +305,24 @@ int parseline(const char *cmdline, char **argv)
  */
 int builtin_cmd(char **argv) 
 {
+    // 인자들 중 첫번째 인자를 Cmd로 설정한다.
     char* cmd = argv[0];
+
     if(strcmp(cmd, "quit") == 0){
+        // cmd가 quit 이라면 쉘을 종료한다.
         exit(0);
     } else if (strcmp(cmd, "fg") == 0 || strcmp(cmd, "bg") == 0) {
+        // cmd가 fg나 bg라면 do_bgfg를 호출한다.
         do_bgfg(argv);
     } else if (strcmp(cmd, "jobs") == 0) {
+        // cmd가 jobs라면 listjobs를 이용해 출력한다.
         listjobs(jobs);
     } else {
-        return 1;     /* not a builtin command */
+        // cmd가 built-in cmd가 아닌 경우 0을 반환한다.
+        return 0;
     }
-    return 0;
+    // cmd가 built-in cmd인 경우이므로 1을 반환한다.
+    return 1;
 }
 
 /* 
@@ -305,9 +330,9 @@ int builtin_cmd(char **argv)
  */
 void do_bgfg(char **argv) 
 {
-    // parse argv
-    char* cmd = argv[0];
-    char* param;
+    // argv 파싱 변수들
+    char* cmd = argv[0]; // argv의 첫번째 인자
+    char* param; // argv의 두번째 인자. 즉, job이나 process ID
 
     // Job or Process ID
     int jid;
@@ -316,7 +341,7 @@ void do_bgfg(char **argv)
     // Job
     struct job_t* job;
 
-    // result
+    // kill result
     int killResult;
 
     // Check Booleans
@@ -327,41 +352,57 @@ void do_bgfg(char **argv)
     // Iterator
     int i;
 
+    // 만약 올바르지 않은 입력인데 do_bgfg가 호출되었다면, 에러를 표시하고 종료한다.
     if(!argv[0] || !(strcmp(argv[0], "fg") == 0 || strcmp(argv[0], "bg") == 0)){
         printf("do_bgfg: Internal error");
         exit(0);
     }
+
+    // 만약 두번째 인자가 존재하지 않는다면, 인자가 필요함을 표시하고 종료한다.
     if(!argv[1]){
         printf("%s command requires PID or %%jobid argument\n", argv[0]);
         return;
     }
 
+    // 두번째 인자를 param에 저장한다.
     param = argv[1];
+
+    // 첫번째 글자가 %라면, JobID 이므로 isJobId를 true로 설정하고, 아니라면 false로 설정한다.
     isJobId = (param[0] == '%');
 
+    // 두번째 인자가 올바른 인자인지, 즉 숫자로 이루어져 있는 인자인지 체크하자.
+    // Job ID 인 경우에는 인덱스 1부터, Process ID인 경우에는 인덱스 0부터, 각 글자가 숫자인지 체크한다.
     for(i = isJobId; ; i++){
+        // null 문자일 경우 종료
         if(param[i] == '\0'){
             break;
         }
+
+        // i번째 인덱스의 글자가 숫자가 아닌 경우
         if(!isdigit(param[i])){
+            // isDigit을 false로 만들고 반복 종료.
             isDigit = 0;
             break;
         }
     }
 
+    // param이 올바르지 않은, 즉 숫자로만 이루어져 있지 않은 경우 에러를 띄우고 종료
     if(!isDigit) {
         printf("%s: argument must be a PID or %%jobid\n", cmd);
         return;
     }
 
     if(isJobId) {
+        // Job ID인 경우, ID를 파싱하고 getjobjid를 통해 job 조회
         jid = (int) strtol(param + 1, NULL, 10);
         job = getjobjid(jobs, jid);
     } else {
+        // Process ID인 경우, ID를 파싱하고 getjobpid를 통해 job 조회
         pid = strtol(param, NULL, 10);
         job = getjobpid(jobs, pid);
     }
 
+    // 해당하는 job이 존재하지 않는 경우, Job ID 여부에 따라 적절한 에러 메시지 출력
     if(!job){
         if(isJobId){
             printf("%%%d: No such job\n", jid);
@@ -371,21 +412,31 @@ void do_bgfg(char **argv)
         return;
     }
 
-    pid = job->pid;
-    isFG = (strcmp(cmd, "fg") == 0);
+    pid = job->pid; // job의 pid 설정
+    isFG = (strcmp(cmd, "fg") == 0); // foreground 여부 저장
 
-    killResult = kill(-pid, SIGCONT);
+    killResult = kill(-pid, SIGCONT); // 프로세스에 SIGCONT 전송
 
     if(isFG){
+        // Foreground job인 경우
+
+        // 우선 kill에 실패했을 경우 에러를 띄운다.
         if(killResult < 0) {
             unix_error("kill (fg) error");
         }
+
+        // Job의 상태를 FG로 바꾸고 job이 종료되기를 기다린다.
         job->state = FG;
         waitfg(pid);
     } else {
+        // Background Job인 경우
+
+        // 우선 kill에 실패했을 경우 에러를 띄운다.
         if(killResult < 0) {
             unix_error("kill (bg) error");
         }
+
+        // Job의 상태를 BG로 바꾸고 상태를 출력한다.
         job->state = BG;
         printf("[%d] (%d) %s", job->jid, job->pid, job->cmdline);
     }
