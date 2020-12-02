@@ -489,20 +489,20 @@ void sigchld_handler(int sig)
             // Job 상태 출력
             // WSTOPSIG를 통해 프로세스를 정지시킨 시그널 조회
             printf("Job [%d] (%d) stopped by signal %d\n", job->jid, pid, WSTOPSIG(status));
-        } else if(WIFEXITED(status)){ // 자식 프로세스가 EXIT된 상태일 때
-            if(WTERMSIG(status)){ // 자식 프로세스를 종료시킨 시그널이 0이 아닐 때
-                // 에러 출력
-                unix_error("waitpid error");
+        } else {
+            if(WIFEXITED(status)){ // 자식 프로세스가 EXIT된 상태일 때
+                if(WTERMSIG(status)){ // 자식 프로세스를 종료시킨 시그널이 0이 아닐 때
+                    // 에러 출력
+                    unix_error("waitpid error");
+                }
+            } else if (WIFSIGNALED(status)) { // 자식 프로세스가 어떤 신호를 받아서 종료되었을 때
+                // Job 상태 출력
+                // WTERMSIG를 통해 종료하게 만든 시그널 출력
+                printf("Job [%d] (%d) terminated by signal %d\n", pid2jid(pid), pid, WTERMSIG(status));
             }
 
             // Job 삭제
             deletejob(jobs, pid);
-        } else if (WIFSIGNALED(status)) { // 자식 프로세스가 어떤 신호를 받아서 종료되었을 때
-            deletejob(jobs, pid); // job을 우선 삭제
-
-            // Job 상태 출력
-            // WTERMSIG를 통해 종료하게 만든 시그널 출력
-            printf("Job [%d] (%d) terminated by signal %d\n", getjobpid(jobs, pid)->jid, pid, WTERMSIG(status));
         }
     }
 }
