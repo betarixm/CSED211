@@ -13,3 +13,4 @@ add_executable(LAB9-PLM2 Lab/LAB9/plm2.c)
 add_executable(LAB9-PLM3 Lab/LAB9/plm3.c)
 
 add_executable(LAB10 Lab/LAB10/labsh.c )
+add_executable(LAB11 Lab/Lab11/lab11.c)
