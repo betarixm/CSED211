@@ -56,6 +56,7 @@ static void checkheap(int verbose);
 static void checkblock(void *bp);
 
 static char *heap_listp = 0;
+static char *rover;
 
 /* 
  * mm_init - initialize the malloc package.
@@ -200,4 +201,46 @@ static void* coalesce(void* bp){
         bp = PREV_BLKP(bp);
     }
     return bp;
+}
+
+/*
+ * find_fit - Find a fit for a block with asize bytes
+ */
+static void *find_fit(size_t asize)
+{
+    /* Next fit search */
+    char *oldrover = rover;
+
+    /* Search from the rover to the end of list */
+    for ( ; GET_SIZE(HDRP(rover)) > 0; rover = NEXT_BLKP(rover))
+	if (!GET_ALLOC(HDRP(rover)) && (asize <= GET_SIZE(HDRP(rover))))
+	    return rover;
+
+    /* search from start of list to old rover */
+    for (rover = heap_listp; rover < oldrover; rover = NEXT_BLKP(rover))
+	if (!GET_ALLOC(HDRP(rover)) && (asize <= GET_SIZE(HDRP(rover))))
+	    return rover;
+
+    return NULL;  /* no fit found */
+}
+
+/*
+ * place - Place block of asize bytes at start of free block bp
+ *         and split if remainder would be at least minimum block size
+ */
+static void place(void *bp, size_t asize)
+{
+    size_t csize = GET_SIZE(HDRP(bp));
+
+    if ((csize - asize) >= (2*DSIZE)) {
+        PUT(HDRP(bp), PACK(asize, 1));
+        PUT(FTRP(bp), PACK(asize, 1));
+        bp = NEXT_BLKP(bp);
+        PUT(HDRP(bp), PACK(csize-asize, 0));
+        PUT(FTRP(bp), PACK(csize-asize, 0));
+    }
+    else {
+        PUT(HDRP(bp), PACK(csize, 1));
+        PUT(FTRP(bp), PACK(csize, 1));
+    }
 }
