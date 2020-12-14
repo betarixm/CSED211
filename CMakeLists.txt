@@ -14,10 +14,3 @@ add_executable(ASSN4-TRANS ASSN/ASSN4/test-trans.c ASSN/ASSN4/trans.c ASSN/ASSN4
 add_executable(ASSN5 ASSN/ASSN5/myint.c ASSN/ASSN5/myspin.c ASSN/ASSN5/mysplit.c ASSN/ASSN5/mystop.c ASSN/ASSN5/tsh.c)
 
 add_executable(ASSN6 ${ASSN6_HEADERS} ${ASSN6_SOURCES})
-
-add_executable(LAB9-PLM1 Lab/LAB9/plm1.c)
-add_executable(LAB9-PLM2 Lab/LAB9/plm2.c)
-add_executable(LAB9-PLM3 Lab/LAB9/plm3.c)
-
-add_executable(LAB10 Lab/LAB10/labsh.c)
-add_executable(LAB11 Lab/Lab11/lab11.c)
