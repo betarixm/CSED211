@@ -24,7 +24,9 @@
 /* rounds up to the nearest multiple of ALIGNMENT */
 #define ALIGN(size) (((size) + (ALIGNMENT-1)) & ~0x7)
 
-#define BUFFER (1<<7)
+#define PADDING (1<<7)
+#define TRUE 1
+#define FALSE 0
 
 #define SIZE_T_SIZE (ALIGN(sizeof(size_t)))
 
@@ -38,8 +40,9 @@
 #define PACK(size, alloc)  ((size) | (alloc))
 
 #define GET(p) (*(unsigned int *)(p))
-#define PUT(p, val) (*(unsigned int *)(p) = (val) | GET_TAG(p))
-#define PUT_WITHOUT_TAG(p, val) (*(unsigned int *)(p) = (val))
+
+#define PUT(p, val) (*(unsigned int *)(p) = (val))
+#define PUT_WITH_TAG(p, val) (*(unsigned int *)(p) = (val) | GET_TAG(p))
 
 #define PUT_TAG(p) (*(unsigned int*) (p) = GET(p) | 0x2)
 #define DELETE_TAG(p) (*(unsigned int*) (p) = GET(p) & ~0x2)
@@ -54,6 +57,8 @@
 #define NEXT_BLKP(bp) ((char *)(bp) + GET_SIZE(((char *)(bp) - WSIZE)))
 #define PREV_BLKP(bp) ((char *)(bp) - GET_SIZE(((char *)(bp) - DSIZE)))
 
+#define IS_NEXT_BLOCK_ALLOCATED(ptr) (GET_ALLOC(HDRP(NEXT_BLKP(ptr))) && GET_SIZE(HDRP(NEXT_BLKP(ptr))))
+#define IS_BLOCK_ALLOCATED(ptr) (GET_ALLOC(HDRP(ptr)) && GET_SIZE(HDRP(ptr)))
 team_t team = {
         /* Team name */
         "Gwon Minjae",
@@ -68,9 +73,7 @@ static void *extend_heap(size_t words);
 static void place(void *bp, size_t asize);
 static void *find_fit(size_t asize);
 static void *coalesce(void *bp);
-static void *first_fit(size_t asize);
-static void *next_fit(size_t asize);
-static void *best_fit(size_t asize);
+static int extend_heap_recycle(void* ptr, size_t size);
 
 static char *heap_listp = 0;
 static char *current_block;
@@ -84,10 +87,10 @@ int mm_init(void)
         return -1;
     }
 
-    PUT_WITHOUT_TAG(heap_listp, 0);
-    PUT_WITHOUT_TAG(heap_listp + (1 * WSIZE), PACK(DSIZE, 1));
-    PUT_WITHOUT_TAG(heap_listp + (2 * WSIZE), PACK(DSIZE, 1));
-    PUT_WITHOUT_TAG(heap_listp + (3 * WSIZE), PACK(0, 1));
+    PUT(heap_listp, 0);
+    PUT(heap_listp + (1 * WSIZE), PACK(DSIZE, 1));
+    PUT(heap_listp + (2 * WSIZE), PACK(DSIZE, 1));
+    PUT(heap_listp + (3 * WSIZE), PACK(0, 1));
     heap_listp += (2 * WSIZE);
 
     current_block = heap_listp;
@@ -152,8 +155,8 @@ void mm_free(void *ptr)
 
     DELETE_TAG(HDRP(NEXT_BLKP(ptr)));
 
-    PUT(HDRP(ptr), PACK(size, 0));
-    PUT(FTRP(ptr), PACK(size, 0));
+    PUT_WITH_TAG(HDRP(ptr), PACK(size, 0));
+    PUT_WITH_TAG(FTRP(ptr), PACK(size, 0));
     coalesce(ptr);
 }
 
@@ -163,49 +166,87 @@ void mm_free(void *ptr)
 void *mm_realloc(void *ptr, size_t size)
 {
     void *new_ptr = ptr;
-    size_t new_size = size;
-    int remainder;
+    size_t body_size = size;
+    int expandable_size;
     int extendsize;
-    int block_buffer;
+    int remaining_size;
+    int is_next_block_allocated, is_prev_block_allocated, is_reallocated = FALSE;
 
     if(size == 0) {
         return NULL;
     }
 
-    if(new_size <= DSIZE) {
-        new_size = 2 * DSIZE;
+    if(body_size <= DSIZE) {
+        body_size = 2 * DSIZE;
     } else {
-        new_size = DSIZE * (new_size + (DSIZE) + (DSIZE - 1)) / DSIZE;
+        body_size = DSIZE * ((body_size + (DSIZE) + (DSIZE - 1)) / DSIZE);
     }
 
-    new_size += BUFFER;
+    body_size += PADDING;
 
-    block_buffer = GET_SIZE(HDRP(ptr)) - new_size;
+    remaining_size = GET_SIZE(HDRP(ptr)) - body_size;
 
-    if (block_buffer < 0) {
-        if(!GET_ALLOC(HDRP(NEXT_BLKP(ptr))) || !GET_SIZE(HDRP(NEXT_BLKP(ptr)))) {
-            remainder = GET_SIZE(HDRP(ptr)) + GET_SIZE(HDRP(NEXT_BLKP(ptr))) - new_size;
-            if(remainder < 0) {
-                extendsize = MAX(-remainder, CHUNKSIZE);
+    if (remaining_size < 0) {
+        is_next_block_allocated = IS_BLOCK_ALLOCATED(NEXT_BLKP(ptr));
+        is_prev_block_allocated = IS_BLOCK_ALLOCATED(PREV_BLKP(ptr));
+        if(!is_next_block_allocated) {
+            expandable_size = remaining_size;
+            if(remaining_size < 0){
+                expandable_size += extend_heap_recycle(ptr, -remaining_size);
+            }
+            if(expandable_size < 0) {
+                extendsize = MAX(-expandable_size, CHUNKSIZE);
                 if(extend_heap(extendsize) == NULL){
                     return NULL;
                 }
-                remainder += extendsize;
+                expandable_size += extendsize;
             }
-            PUT_WITHOUT_TAG(HDRP(ptr), PACK(new_size + remainder, 1));
-            PUT_WITHOUT_TAG(FTRP(ptr), PACK(new_size + remainder, 1));
-        } else {
-            new_ptr = mm_malloc(new_size - DSIZE);
-            memmove(new_ptr, ptr, MIN(size, new_size));
+            PUT(HDRP(ptr), PACK(body_size + expandable_size, 1));
+            PUT(FTRP(ptr), PACK(body_size + expandable_size, 1));
+            is_reallocated = TRUE;
+        }
+
+        if(!is_reallocated && !is_prev_block_allocated) {
+            new_ptr = PREV_BLKP(ptr);
+            expandable_size = remaining_size + GET_SIZE(HDRP(new_ptr));
+            if(expandable_size >= 0) {
+                PUT(HDRP(new_ptr), PACK(body_size + expandable_size, 1));
+                PUT(FTRP(new_ptr), PACK(body_size + expandable_size, 1));
+                memmove(new_ptr, ptr, MIN(size, body_size));
+                is_reallocated = TRUE;
+            }
+        }
+
+        if(!is_reallocated){
+            new_ptr = mm_malloc(body_size - DSIZE);
+            memmove(new_ptr, ptr, MIN(size, body_size));
             mm_free(ptr);
         }
-        block_buffer = GET_SIZE(HDRP(new_ptr)) - new_size;
+
+        remaining_size = GET_SIZE(HDRP(new_ptr)) - body_size;
     }
 
-    if(block_buffer < 2 * BUFFER){
+    if(remaining_size < 2 * PADDING){
         PUT_TAG(HDRP(NEXT_BLKP(new_ptr)));
     }
+
     return new_ptr;
+}
+
+static int extend_heap_recycle(void* ptr, size_t size) {
+    int result = 0;
+    void* cur;
+    size = ALIGN(size);
+
+    for(cur = NEXT_BLKP(ptr); (!IS_BLOCK_ALLOCATED(cur)) && GET_SIZE(HDRP(cur)) > 0; cur=NEXT_BLKP(cur)){
+        result += GET_SIZE(HDRP(cur));
+        if(result > size){
+            break;
+        }
+    }
+
+    return result;
+
 }
 
 static void* extend_heap(size_t words) {
@@ -217,9 +258,9 @@ static void* extend_heap(size_t words) {
         return NULL;
     }
 
-    PUT_WITHOUT_TAG(HDRP(bp), PACK(size, 0));
-    PUT_WITHOUT_TAG(FTRP(bp), PACK(size, 0));
-    PUT_WITHOUT_TAG(HDRP(NEXT_BLKP(bp)), PACK(0, 1));
+    PUT(HDRP(bp), PACK(size, 0));
+    PUT(FTRP(bp), PACK(size, 0));
+    PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));
 
     return coalesce(bp);
 }
@@ -237,17 +278,17 @@ static void* coalesce(void* bp){
         return bp;
     } else if (prev_alloc && !next_alloc) {
         size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
-        PUT(HDRP(bp), PACK(size, 0));
-        PUT(FTRP(bp), PACK(size, 0));
+        PUT_WITH_TAG(HDRP(bp), PACK(size, 0));
+        PUT_WITH_TAG(FTRP(bp), PACK(size, 0));
     } else if (!prev_alloc && next_alloc) {
         size += GET_SIZE((HDRP(PREV_BLKP(bp))));
-        PUT(FTRP(bp), PACK(size, 0));
-        PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
+        PUT_WITH_TAG(FTRP(bp), PACK(size, 0));
+        PUT_WITH_TAG(HDRP(PREV_BLKP(bp)), PACK(size, 0));
         bp = PREV_BLKP(bp);
     } else {
         size += (GET_SIZE(HDRP(PREV_BLKP(bp))) + GET_SIZE(FTRP(NEXT_BLKP(bp))));
-        PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
-        PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
+        PUT_WITH_TAG(HDRP(PREV_BLKP(bp)), PACK(size, 0));
+        PUT_WITH_TAG(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
         bp = PREV_BLKP(bp);
     }
     if((current_block > (char*)bp) && (current_block < NEXT_BLKP(bp))){
@@ -258,57 +299,29 @@ static void* coalesce(void* bp){
 
 static void *find_fit(size_t asize)
 {
-    return next_fit(asize);
-}
+    char* current_block_backup = current_block;
+    char* best_block = NULL;
 
-static void *next_fit(size_t asize){
-    char* oldrover = current_block;
-
+    int size_current, size_best;
     for(; GET_SIZE(HDRP(current_block)) > 0; current_block = NEXT_BLKP(current_block)){
-        if((!GET_ALLOC(HDRP(current_block)) && (asize <= GET_SIZE(HDRP(current_block)))) && !(GET_TAG(HDRP(current_block)))){
+        size_current = GET_SIZE(HDRP(current_block));
+        if((asize <= size_current) && (!GET_ALLOC(HDRP(current_block))) && (!(GET_TAG(HDRP(current_block))))){
             return current_block;
         }
     }
 
-    for (current_block = heap_listp; current_block < oldrover; current_block = NEXT_BLKP(current_block)){
-        if((!GET_ALLOC(HDRP(current_block)) && (asize <= GET_SIZE(HDRP(current_block)))) && !(GET_TAG(HDRP(current_block)))){
-            return current_block;
+    for (current_block = heap_listp; current_block < current_block_backup; current_block = NEXT_BLKP(current_block)){
+        size_current = GET_SIZE(HDRP(current_block));
+        if((asize <= size_current) && (!GET_ALLOC(HDRP(current_block))) && (!(GET_TAG(HDRP(current_block))))){
+            if(best_block == NULL || (size_current < size_best)){
+                best_block = current_block;
+                size_best = size_current;
+            }
         }
     }
 
-    return NULL;
+    return best_block;
 }
-
-static void *best_fit(size_t asize){
-    char* oldrover = current_block;
-
-    for(; GET_SIZE(HDRP(current_block)) > 0; current_block = NEXT_BLKP(current_block)){
-        if((!GET_ALLOC(HDRP(current_block)) && (asize <= GET_SIZE(HDRP(current_block)))) && !(GET_TAG(HDRP(current_block)))){
-            return current_block;
-        }
-    }
-
-    for (current_block = heap_listp; current_block < oldrover; current_block = NEXT_BLKP(current_block)){
-        if((!GET_ALLOC(HDRP(current_block)) && (asize <= GET_SIZE(HDRP(current_block)))) && !(GET_TAG(HDRP(current_block)))){
-            return current_block;
-        }
-    }
-
-    return NULL;
-}
-
-static void *first_fit(size_t asize){
-    char* oldrover = current_block;
-
-    for (current_block = heap_listp; GET_SIZE(HDRP(current_block)) > 0; current_block = NEXT_BLKP(current_block)){
-        if((!GET_ALLOC(HDRP(current_block)) && (asize <= GET_SIZE(HDRP(current_block)))) && !(GET_TAG(HDRP(current_block)))){
-            return current_block;
-        }
-    }
-
-    return NULL;
-}
-
 
 /*
  * place - Place block of asize bytes at start of free block bp
@@ -316,17 +329,17 @@ static void *first_fit(size_t asize){
  */
 static void place(void *bp, size_t asize)
 {
-    size_t csize = GET_SIZE(HDRP(bp));
-
-    if ((csize - asize) >= (2 * DSIZE)) {
-        PUT_WITHOUT_TAG(HDRP(bp), PACK(asize, 1));
-        PUT_WITHOUT_TAG(FTRP(bp), PACK(asize, 1));
-        bp = NEXT_BLKP(bp);
-        PUT_WITHOUT_TAG(HDRP(bp), PACK(csize - asize, 0));
-        PUT_WITHOUT_TAG(FTRP(bp), PACK(csize - asize, 0));
-    }
-    else {
-        PUT_WITHOUT_TAG(HDRP(bp), PACK(csize, 1));
-        PUT_WITHOUT_TAG(FTRP(bp), PACK(csize, 1));
+    size_t ptr_size = GET_SIZE(HDRP(bp));
+    size_t remainder = ptr_size - asize;
+    if (remainder >= 2*DSIZE) {
+        /* Split block */
+        PUT_WITH_TAG(HDRP(bp), PACK(asize, 1)); /* Block header */
+        PUT_WITH_TAG(FTRP(bp), PACK(asize, 1)); /* Block footer */
+        PUT(HDRP(NEXT_BLKP(bp)), PACK(remainder, 0)); /* Next header */
+        PUT(FTRP(NEXT_BLKP(bp)), PACK(remainder, 0)); /* Next footer */
+    } else {
+        /* Do not split block */
+        PUT_WITH_TAG(HDRP(bp), PACK(ptr_size, 1)); /* Block header */
+        PUT_WITH_TAG(FTRP(bp), PACK(ptr_size, 1)); /* Block footer */
     }
 }
