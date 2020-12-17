@@ -80,7 +80,7 @@ static int extend_heap_recycle(void *ptr, size_t size);
 
 static int mm_check();
 
-#define DEBUGx
+#define DEBUG
 
 #ifdef DEBUG
 #define VERBOSE
@@ -387,6 +387,7 @@ static void place(void *bp, size_t asize) {
     }
 }
 
+#ifdef DEBUG
 /*
  * mm_check - Heap Consistency Checker
  * return -1 at error. else, return 0.
@@ -525,3 +526,4 @@ static int mm_check() {
     printf("\n");
     return 0;
 }
+#endif
