@@ -14,3 +14,4 @@ add_executable(ASSN4-TRANS ASSN/ASSN4/test-trans.c ASSN/ASSN4/trans.c ASSN/ASSN4
 add_executable(ASSN5 ASSN/ASSN5/myint.c ASSN/ASSN5/myspin.c ASSN/ASSN5/mysplit.c ASSN/ASSN5/mystop.c ASSN/ASSN5/tsh.c)
 
 add_executable(ASSN6 ${ASSN6_HEADERS} ${ASSN6_SOURCES})
+target_compile_options(ASSN6 PUBLIC -Wall -O2 -m32)
