@@ -78,6 +78,15 @@ static void *coalesce(void *bp);
 
 static int extend_heap_recycle(void *ptr, size_t size);
 
+static int mm_check();
+
+#define DEBUGx
+
+#ifdef DEBUG
+#define VERBOSE
+int count_free = 0, count_realloc = 0, count_malloc = 0;
+#endif
+
 static char *heap_listp = 0;
 static char *current_block;
 
@@ -120,6 +129,10 @@ void *mm_malloc(size_t size) {
         return NULL;
     }
 
+#ifdef DEBUG
+    ++count_malloc;
+#endif
+
     if (size <= DSIZE) {
         asize = 2 * DSIZE;
     } else {
@@ -128,14 +141,25 @@ void *mm_malloc(size_t size) {
 
     if ((bp = find_fit(asize)) != NULL) {
         place(bp, asize);
+#ifdef DEBUG
+        mm_check();
+#endif
         return bp;
     }
 
     extendsize = MAX(asize, CHUNKSIZE);
     if ((bp = extend_heap(extendsize)) == NULL) {
+#ifdef DEBUG
+        --count_malloc;
+#endif
         return NULL;
     }
     place(bp, asize);
+
+#ifdef DEBUG
+    mm_check();
+#endif
+
     return bp;
 }
 
@@ -146,6 +170,12 @@ void mm_free(void *ptr) {
     if (ptr == 0) {
         return;
     }
+
+#ifdef DEBUG
+    if(IS_BLOCK_ALLOCATED(ptr)){
+        ++count_free;
+    }
+#endif
 
     size_t size = GET_SIZE(HDRP(ptr));
 
@@ -158,12 +188,22 @@ void mm_free(void *ptr) {
     PUT_WITH_TAG(HDRP(ptr), PACK(size, 0));
     PUT_WITH_TAG(FTRP(ptr), PACK(size, 0));
     coalesce(ptr);
+
+#ifdef DEBUG
+    mm_check();
+#endif
+
 }
 
 /*
  * mm_realloc - Implemented simply in terms of mm_malloc and mm_free
  */
 void *mm_realloc(void *ptr, size_t size) {
+
+#ifdef DEBUG
+    ++count_realloc;
+#endif
+
     void *new_ptr = ptr;
     size_t body_size = size;
     int expandable_size;
@@ -172,6 +212,9 @@ void *mm_realloc(void *ptr, size_t size) {
     int is_next_block_allocated, is_prev_block_allocated, is_reallocated = FALSE;
 
     if (size == 0) {
+#ifdef DEBUG
+        --count_realloc;
+#endif
         return NULL;
     }
 
@@ -196,6 +239,9 @@ void *mm_realloc(void *ptr, size_t size) {
             if (expandable_size < 0) {
                 extendsize = MAX(-expandable_size, CHUNKSIZE);
                 if (extend_heap(extendsize) == NULL) {
+#ifdef DEBUG
+                    --count_realloc;
+#endif
                     return NULL;
                 }
                 expandable_size += extendsize;
@@ -228,6 +274,10 @@ void *mm_realloc(void *ptr, size_t size) {
     if (remaining_size < 2 * PADDING) {
         PUT_TAG(HDRP(NEXT_BLKP(new_ptr)));
     }
+
+#ifdef DEBUG
+    mm_check();
+#endif
 
     return new_ptr;
 }
@@ -265,13 +315,9 @@ static void *extend_heap(size_t words) {
 }
 
 static void *coalesce(void *bp) {
-    size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp)));
+    size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp))) || GET_TAG(HDRP(PREV_BLKP(bp)));
     size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
     size_t size = GET_SIZE(HDRP(bp));
-
-    if (GET_TAG(HDRP(PREV_BLKP(bp)))) {
-        prev_alloc = 1;
-    }
 
     if (prev_alloc && next_alloc) {
         return bp;
@@ -339,4 +385,143 @@ static void place(void *bp, size_t asize) {
         PUT_WITH_TAG(HDRP(bp), PACK(ptr_size, 1)); /* Block header */
         PUT_WITH_TAG(FTRP(bp), PACK(ptr_size, 1)); /* Block footer */
     }
+}
+
+/*
+ * mm_check - Heap Consistency Checker
+ * return -1 at error. else, return 0.
+ * It checks the suggested in "malloclab.pdf"
+ */
+static int mm_check() {
+    /* Below is suggested check list in "malloclab.pdf" */
+
+    char* cursor;
+    int num_free_blocks, num_alloc_blocks, num_coalesce_errs, num_overlap_blocks, num_unaligned_blocks;
+    printf("\n[+] DEBUG STATUS\n");
+
+    /*
+     * Is every block in the free list marked as free?
+     * - 이 malloc 구현에서는 implicit 리스트를 이용하고 있기 때문에, free list가 존재하지 않는다.
+     * - 그렇기 때문에, free list를 체크하는 대신 free, malloc, realloc이 불린 횟수와 실제 동적할당 된 힙에서의 allocated 개수를 비교하여 이를 검증할 것이다.
+     */
+    printf("  - Check the number of function call and allocated block is matching...\n");
+    printf("    (If this test print 'PASS' at last debug, it means it's okay.)\n");
+    num_free_blocks = 0, num_alloc_blocks = 0;
+    for(cursor=current_block; GET_SIZE(HDRP(cursor)) > 0; cursor=NEXT_BLKP(cursor)) {
+        if (IS_BLOCK_ALLOCATED(cursor)) {
+            num_alloc_blocks++;
+        } else {
+            num_free_blocks++;
+        }
+    }
+
+    for(cursor = NEXT_BLKP(heap_listp); cursor < current_block; cursor = NEXT_BLKP(current_block)) {
+        if (IS_BLOCK_ALLOCATED(cursor)) {
+            num_alloc_blocks++;
+        } else {
+            num_free_blocks++;
+        }
+    }
+
+#ifdef VERBOSE
+    printf("    * Free Blocks in heap: %d\n", num_free_blocks);
+    printf("    * Allocated Blocks in heap: %d\n", num_alloc_blocks);
+    printf("    * mm_malloc called: %d\n", count_malloc);
+    printf("    * mm_free called: %d\n", count_free);
+    printf("    * mm_realloc called: %d\n", count_realloc);
+#endif
+
+    if((count_malloc - count_free) != num_alloc_blocks) {
+        printf("    [ ERRO ] The number of function call and allocated block is not matched.\n");
+        printf("             Expected allocated: %d, Actual allocated: %d\n", count_malloc - count_free, num_alloc_blocks);
+    } else {
+        printf("    [ PASS ] It seems good :) \n");
+    }
+    printf("\n");
+
+    /*
+     * Are there any contiguous free blocks that somehow escaped coalescing?
+     */
+    printf("  - Check any contiguous free blocks that somehow escaped coalescing...\n");
+    num_coalesce_errs = -1;
+    for(cursor=current_block; GET_SIZE(HDRP(cursor)) > 0; cursor=NEXT_BLKP(cursor)) {
+        if ((!IS_BLOCK_ALLOCATED(cursor)) && (!IS_BLOCK_ALLOCATED(NEXT_BLKP(cursor)))) {
+            num_coalesce_errs++;
+        }
+    }
+
+    for(cursor = NEXT_BLKP(heap_listp); cursor < current_block; cursor = NEXT_BLKP(current_block)) {
+        if ((!IS_BLOCK_ALLOCATED(cursor)) && (!IS_BLOCK_ALLOCATED(NEXT_BLKP(cursor)))) {
+            num_coalesce_errs++;
+        }
+    }
+
+    if(num_coalesce_errs != 0) {
+        printf("    [ ERRO ] The number of contiguous free blocks: %d\n", num_coalesce_errs);
+    } else {
+        printf("    [ PASS ] It seems good :) \n");
+    }
+    printf("\n");
+
+    /*
+     * Is every free block actually in the free list?
+     * - Free list를 사용하고 있지 않기 때문에, 해당 검사는 수행하지 않는다.
+     */
+
+    /*
+     * Do the pointers in the free list point to valid free blocks?
+     * - 이 구현은 implicit list를 이용하고 있기 때문에, 해당 검사는 수행하지 않는다.
+     */
+
+    /*
+     * Do any allocated blocks overlap?
+     * - 이 구현은 implicit list를 이용하고 있기 때문에, 모든 블럭 리스트에 대해 겹치는 구간이 있는지 검사할 것 이다.
+     */
+    printf("  - Check any blocks overlap...\n");
+
+    num_overlap_blocks = 0;
+    for(cursor=current_block; GET_SIZE(HDRP(cursor)) > 0; cursor=NEXT_BLKP(cursor)) {
+        if (IS_BLOCK_ALLOCATED(NEXT_BLKP(cursor)) && (cursor + GET_SIZE(HDRP(cursor)) > NEXT_BLKP(cursor))) {
+            num_overlap_blocks++;
+        }
+    }
+
+    for(cursor = NEXT_BLKP(heap_listp); cursor < current_block; cursor = NEXT_BLKP(current_block)) {
+        if (IS_BLOCK_ALLOCATED(NEXT_BLKP(cursor)) && (cursor + GET_SIZE(HDRP(cursor)) > NEXT_BLKP(cursor))) {
+            num_overlap_blocks++;
+        }
+    }
+
+    if(num_overlap_blocks != 0) {
+        printf("    [ ERRO ] The number of overlapping blocks: %d\n", num_overlap_blocks);
+    } else {
+        printf("    [ PASS ] It seems good :) \n");
+    }
+    printf("\n");
+
+    /*
+     * Do the pointers in a heap block point to valid heap addresses?
+     * - 모든 힙 블록 포인터가 align 된 주소를 가리키는지 확인한다.
+     */
+    printf("  - Check the pointers in a heap block point to valid (aligned) heap addresses...\n");
+    num_unaligned_blocks = 0;
+    for(cursor=current_block; GET_SIZE(HDRP(cursor)) > 0; cursor=NEXT_BLKP(cursor)) {
+        if (IS_BLOCK_ALLOCATED(NEXT_BLKP(cursor)) && ((NEXT_BLKP(cursor) - cursor)%ALIGNMENT != 0)) {
+            num_unaligned_blocks++;
+        }
+    }
+
+    for(cursor = NEXT_BLKP(heap_listp); cursor < current_block; cursor = NEXT_BLKP(current_block)) {
+        if (IS_BLOCK_ALLOCATED(NEXT_BLKP(cursor)) && ((NEXT_BLKP(cursor) - cursor)%ALIGNMENT != 0)) {
+            num_unaligned_blocks++;
+        }
+    }
+
+    if(num_unaligned_blocks++ != 0) {
+        printf("    [ ERRO ] The number of un-aligned blocks: %d\n", num_unaligned_blocks);
+    } else {
+        printf("    [ PASS ] It seems good :) \n");
+    }
+    printf("\n");
+    return 0;
 }
