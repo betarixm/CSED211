@@ -89,7 +89,7 @@ static int mm_check();
 
 #ifdef DEBUG
 #define VERBOSE
-int count_free = 0, count_realloc = 0, count_malloc = 0;
+int count_free = 0, count_block = 0;
 #endif
 
 static char *heap_listp = 0;
@@ -99,6 +99,7 @@ static char *current_block;
  * mm_init - initialize the malloc package.
  */
 int mm_init(void) {
+    count_free = 0; count_block = -1;
     if ((heap_listp = mem_sbrk(4 * WSIZE)) == (void *) -1) {
         return -1;
     }
@@ -134,10 +135,6 @@ void *mm_malloc(size_t size) {
         return NULL;
     }
 
-#ifdef DEBUG
-    ++count_malloc;
-#endif
-
     if (size <= DSIZE) {
         asize = 2 * DSIZE;
     } else {
@@ -147,6 +144,7 @@ void *mm_malloc(size_t size) {
     if ((bp = find_fit(asize)) != NULL) {
         place(bp, asize);
 #ifdef DEBUG
+        count_free--;
         mm_check();
 #endif
         return bp;
@@ -154,9 +152,6 @@ void *mm_malloc(size_t size) {
 
     extendsize = MAX(asize, CHUNKSIZE);
     if ((bp = extend_heap(extendsize)) == NULL) {
-#ifdef DEBUG
-        --count_malloc;
-#endif
         return NULL;
     }
     place(bp, asize);
@@ -204,11 +199,6 @@ void mm_free(void *ptr) {
  * mm_realloc - Implemented simply in terms of mm_malloc and mm_free
  */
 void *mm_realloc(void *ptr, size_t size) {
-
-#ifdef DEBUG
-    ++count_realloc;
-#endif
-
     void *new_ptr = ptr;
     size_t body_size = size;
     int expandable_size;
@@ -217,9 +207,6 @@ void *mm_realloc(void *ptr, size_t size) {
     int is_next_block_allocated, is_prev_block_allocated, is_reallocated = FALSE;
 
     if (size == 0) {
-#ifdef DEBUG
-        --count_realloc;
-#endif
         return NULL;
     }
 
@@ -238,17 +225,25 @@ void *mm_realloc(void *ptr, size_t size) {
         is_prev_block_allocated = IS_BLOCK_ALLOCATED(PREV_BLKP(ptr));
         if (!is_next_block_allocated) {
             expandable_size = remaining_size;
+#ifdef DEBUG
+            int count_free_back = count_free;
+            int count_malloc_back = count_block;
+#endif
             if (remaining_size < 0) {
                 expandable_size += extend_heap_recycle(ptr, -remaining_size);
             }
             if (expandable_size < 0) {
+#ifdef DEBUG
+                count_block = count_malloc_back;
+                count_free = count_free_back;
+#endif
                 extendsize = MAX(-expandable_size, CHUNKSIZE);
                 if (extend_heap(extendsize) == NULL) {
-#ifdef DEBUG
-                    --count_realloc;
-#endif
                     return NULL;
                 }
+#ifdef DEBUG
+                --count_block;
+#endif
                 expandable_size += extendsize;
             }
             PUT(HDRP(ptr), PACK(body_size + expandable_size, 1));
@@ -260,6 +255,9 @@ void *mm_realloc(void *ptr, size_t size) {
             new_ptr = PREV_BLKP(ptr);
             expandable_size = remaining_size + (int)GET_SIZE(HDRP(new_ptr));
             if (expandable_size >= 0) {
+#ifdef DEBUG
+                --count_free;
+#endif
                 PUT(HDRP(new_ptr), PACK(body_size + expandable_size, 1));
                 PUT(FTRP(new_ptr), PACK(body_size + expandable_size, 1));
                 memmove(new_ptr, ptr, MIN(size, body_size));
@@ -294,6 +292,10 @@ static int extend_heap_recycle(void *ptr, size_t size) {
 
     for (cur = NEXT_BLKP(ptr); (!IS_BLOCK_ALLOCATED(cur)) && GET_SIZE(HDRP(cur)) > 0; cur = NEXT_BLKP(cur)) {
         result += (int)GET_SIZE(HDRP(cur));
+#ifdef DEBUG
+        --count_block;
+        --count_free;
+#endif
         if (result > size) {
             break;
         }
@@ -311,7 +313,9 @@ static void *extend_heap(size_t words) {
     if ((long) (bp = mem_sbrk(size)) == -1) {
         return NULL;
     }
-
+#ifdef DEBUG
+    count_block++;
+#endif
     PUT(HDRP(bp), PACK(size, 0));
     PUT(FTRP(bp), PACK(size, 0));
     PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));
@@ -330,16 +334,28 @@ static void *coalesce(void *bp) {
         size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
         PUT_WITH_TAG(HDRP(bp), PACK(size, 0));
         PUT_WITH_TAG(FTRP(bp), PACK(size, 0));
+#ifdef DEBUG
+        --count_block;
+        --count_free;
+#endif
     } else if (!prev_alloc && next_alloc) {
         size += GET_SIZE((HDRP(PREV_BLKP(bp))));
         PUT_WITH_TAG(FTRP(bp), PACK(size, 0));
         PUT_WITH_TAG(HDRP(PREV_BLKP(bp)), PACK(size, 0));
         bp = PREV_BLKP(bp);
+#ifdef DEBUG
+        --count_block;
+        --count_free;
+#endif
     } else {
         size += (GET_SIZE(HDRP(PREV_BLKP(bp))) + GET_SIZE(FTRP(NEXT_BLKP(bp))));
         PUT_WITH_TAG(HDRP(PREV_BLKP(bp)), PACK(size, 0));
         PUT_WITH_TAG(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
         bp = PREV_BLKP(bp);
+#ifdef DEBUG
+        count_block -= 2;
+        count_free -= 2;
+#endif
     }
     if ((current_block > (char *) bp) && (current_block < NEXT_BLKP(bp))) {
         current_block = bp;
@@ -385,6 +401,10 @@ static void place(void *bp, size_t asize) {
         PUT_WITH_TAG(FTRP(bp), PACK(asize, 1)); /* Block footer */
         PUT(HDRP(NEXT_BLKP(bp)), PACK(remainder, 0)); /* Next header */
         PUT(FTRP(NEXT_BLKP(bp)), PACK(remainder, 0)); /* Next footer */
+#ifdef DEBUG
+        count_block++;
+        count_free++;
+#endif
     } else {
         /* Do not split block */
         PUT_WITH_TAG(HDRP(bp), PACK(ptr_size, 1)); /* Block header */
@@ -410,19 +430,11 @@ static int mm_check() {
      * - 이 malloc 구현에서는 implicit 리스트를 이용하고 있기 때문에, free list가 존재하지 않는다.
      * - 그렇기 때문에, free list를 체크하는 대신 free, malloc, realloc이 불린 횟수와 실제 동적할당 된 힙에서의 allocated 개수를 비교하여 이를 검증할 것이다.
      */
-    printf("  - Check the number of function call and allocated block is matching...\n");
-    printf("    (If this test print 'PASS' at last debug, it means it's okay.)\n");
-    num_free_blocks = 0, num_alloc_blocks = 0;
-    for(cursor=current_block; GET_SIZE(HDRP(cursor)) > 0; cursor=NEXT_BLKP(cursor)) {
-        if (IS_BLOCK_ALLOCATED(cursor)) {
-            num_alloc_blocks++;
-        } else {
-            num_free_blocks++;
-        }
-    }
+    printf("  - Check the expected heap status and actual heap status is matching... (expecting based on counting function call)\n");
+    num_free_blocks = -1, num_alloc_blocks = -1;
 
-    for(cursor = NEXT_BLKP(heap_listp); cursor < current_block; cursor = NEXT_BLKP(current_block)) {
-        if (IS_BLOCK_ALLOCATED(cursor)) {
+    for(cursor = heap_listp; cursor < (char*)mem_heap_hi(); cursor = NEXT_BLKP(cursor)) {
+        if (GET_ALLOC(HDRP(cursor))) {
             num_alloc_blocks++;
         } else {
             num_free_blocks++;
@@ -430,16 +442,13 @@ static int mm_check() {
     }
 
 #ifdef VERBOSE
-    printf("    * Free Blocks in heap: %d\n", num_free_blocks);
-    printf("    * Allocated Blocks in heap: %d\n", num_alloc_blocks);
-    printf("    * mm_malloc called: %d\n", count_malloc);
-    printf("    * mm_free called: %d\n", count_free);
-    printf("    * mm_realloc called: %d\n", count_realloc);
+    printf("    * Actual: All (%d), Allocated (%d), Freed (%d)\n", num_alloc_blocks + num_free_blocks, num_alloc_blocks, num_free_blocks);
+    printf("    * Expect: All (%d), Allocated (%d), Freed (%d)\n", count_block, count_block-count_free, count_free);
 #endif
 
-    if((count_malloc - count_free) != num_alloc_blocks) {
+    if((count_block - count_free) != num_alloc_blocks) {
         printf("    " RED "[ ERRO ]" RESET " The number of function call and allocated block is not matched.\n");
-        printf("             Expected allocated: %d, Actual allocated: %d\n", count_malloc - count_free, num_alloc_blocks);
+        printf("             Expected allocated: %d, Actual allocated: %d\n", count_block - count_free, num_alloc_blocks);
     } else {
         printf("    " GRN "[ PASS ]" RESET " It seems good :) \n");
     }
@@ -456,7 +465,7 @@ static int mm_check() {
         }
     }
 
-    for(cursor = NEXT_BLKP(heap_listp); NEXT_BLKP(cursor) < current_block; cursor = NEXT_BLKP(current_block)) {
+    for(cursor = NEXT_BLKP(heap_listp); NEXT_BLKP(cursor) < current_block; cursor = NEXT_BLKP(cursor)) {
         if ((!IS_BLOCK_ALLOCATED(cursor)) && (!IS_BLOCK_ALLOCATED(NEXT_BLKP(cursor)))) {
             num_coalesce_errs++;
         }
@@ -492,7 +501,7 @@ static int mm_check() {
         }
     }
 
-    for(cursor = NEXT_BLKP(heap_listp); cursor < current_block; cursor = NEXT_BLKP(current_block)) {
+    for(cursor = NEXT_BLKP(heap_listp); cursor < current_block; cursor = NEXT_BLKP(cursor)) {
         if (IS_BLOCK_ALLOCATED(NEXT_BLKP(cursor)) && (cursor + GET_SIZE(HDRP(cursor)) > NEXT_BLKP(cursor))) {
             num_overlap_blocks++;
         }
@@ -517,7 +526,7 @@ static int mm_check() {
         }
     }
 
-    for(cursor = NEXT_BLKP(heap_listp); cursor < current_block; cursor = NEXT_BLKP(current_block)) {
+    for(cursor = NEXT_BLKP(heap_listp); cursor < current_block; cursor = NEXT_BLKP(cursor)) {
         if (IS_BLOCK_ALLOCATED(NEXT_BLKP(cursor)) && ((NEXT_BLKP(cursor) - cursor)%ALIGNMENT != 0)) {
             num_unaligned_blocks++;
         }
