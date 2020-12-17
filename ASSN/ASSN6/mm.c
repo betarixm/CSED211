@@ -58,6 +58,11 @@
 #define PREV_BLKP(bp) ((char *)(bp) - GET_SIZE(((char *)(bp) - DSIZE)))
 
 #define IS_BLOCK_ALLOCATED(ptr) (GET_ALLOC(HDRP(ptr)) && GET_SIZE(HDRP(ptr)))
+
+#define RED   "\x1B[31m"
+#define GRN   "\x1B[32m"
+#define RESET "\x1B[0m"
+
 team_t team = {
         /* Team name */
         "Gwon Minjae",
@@ -433,10 +438,10 @@ static int mm_check() {
 #endif
 
     if((count_malloc - count_free) != num_alloc_blocks) {
-        printf("    [ ERRO ] The number of function call and allocated block is not matched.\n");
+        printf("    " RED "[ ERRO ]" RESET " The number of function call and allocated block is not matched.\n");
         printf("             Expected allocated: %d, Actual allocated: %d\n", count_malloc - count_free, num_alloc_blocks);
     } else {
-        printf("    [ PASS ] It seems good :) \n");
+        printf("    " GRN "[ PASS ]" RESET " It seems good :) \n");
     }
     printf("\n");
 
@@ -444,23 +449,23 @@ static int mm_check() {
      * Are there any contiguous free blocks that somehow escaped coalescing?
      */
     printf("  - Check any contiguous free blocks that somehow escaped coalescing...\n");
-    num_coalesce_errs = -1;
-    for(cursor=current_block; GET_SIZE(HDRP(cursor)) > 0; cursor=NEXT_BLKP(cursor)) {
+    num_coalesce_errs = 0;
+    for(cursor=current_block; GET_SIZE(HDRP(NEXT_BLKP(cursor))) > 0; cursor=NEXT_BLKP(cursor)) {
         if ((!IS_BLOCK_ALLOCATED(cursor)) && (!IS_BLOCK_ALLOCATED(NEXT_BLKP(cursor)))) {
             num_coalesce_errs++;
         }
     }
 
-    for(cursor = NEXT_BLKP(heap_listp); cursor < current_block; cursor = NEXT_BLKP(current_block)) {
+    for(cursor = NEXT_BLKP(heap_listp); NEXT_BLKP(cursor) < current_block; cursor = NEXT_BLKP(current_block)) {
         if ((!IS_BLOCK_ALLOCATED(cursor)) && (!IS_BLOCK_ALLOCATED(NEXT_BLKP(cursor)))) {
             num_coalesce_errs++;
         }
     }
 
     if(num_coalesce_errs != 0) {
-        printf("    [ ERRO ] The number of contiguous free blocks: %d\n", num_coalesce_errs);
+        printf("    " RED "[ ERRO ]" RESET " The number of contiguous free blocks: %d\n", num_coalesce_errs);
     } else {
-        printf("    [ PASS ] It seems good :) \n");
+        printf("    " GRN "[ PASS ]" RESET " It seems good :) \n");
     }
     printf("\n");
 
@@ -494,9 +499,9 @@ static int mm_check() {
     }
 
     if(num_overlap_blocks != 0) {
-        printf("    [ ERRO ] The number of overlapping blocks: %d\n", num_overlap_blocks);
+        printf("    " RED "[ ERRO ]" RESET " The number of overlapping blocks: %d\n", num_overlap_blocks);
     } else {
-        printf("    [ PASS ] It seems good :) \n");
+        printf("    " GRN "[ PASS ]" RESET " It seems good :) \n");
     }
     printf("\n");
 
@@ -519,9 +524,9 @@ static int mm_check() {
     }
 
     if(num_unaligned_blocks++ != 0) {
-        printf("    [ ERRO ] The number of un-aligned blocks: %d\n", num_unaligned_blocks);
+        printf("    " RED "[ ERRO ]" RESET " The number of un-aligned blocks: %d\n", num_unaligned_blocks);
     } else {
-        printf("    [ PASS ] It seems good :) \n");
+        printf("    " GRN "[ PASS ]" RESET " It seems good :) \n");
     }
     printf("\n");
     return 0;
