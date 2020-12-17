@@ -18,7 +18,7 @@
 /* rounds up to the nearest multiple of ALIGNMENT */
 #define ALIGN(size) (((size) + (ALIGNMENT-1)) & ~0x7u)
 
-#define PADDING (1u<<7u)
+#define PADDING (1u<<7u) // 블럭 패딩
 #define TRUE 1
 #define FALSE 0
 
@@ -88,24 +88,27 @@ int num_expected_blocks = 0; // [디버깅] 예측되는 block의 개수
 
 /*
  * mm_init - initialize the malloc package.
+ * 힙의 가장 처음 부분을 초기화하여 할당할 준비를 한다.
  */
 int mm_init(void) {
-    num_expected_free_blocks = 0; num_expected_blocks = -1;
+#ifdef DEBUG
+    // 예측되는 블럭의 정보를 초기화한다.
+    num_expected_free_blocks = 0; num_expected_blocks = 0;
+#endif
+
+    // 우선 힙을 정의하는데 필요한 최소 크기를 mem_sbrk를 통해 얻어온다.
     if ((heap_listp = mem_sbrk(4 * WSIZE)) == (void *) -1) {
         return -1;
     }
 
     PUT(heap_listp, 0);
-    PUT(heap_listp + (1 * WSIZE), PACK(DSIZE, 1));
-    PUT(heap_listp + (2 * WSIZE), PACK(DSIZE, 1));
-    PUT(heap_listp + (3 * WSIZE), PACK(0, 1));
-    heap_listp += (2 * WSIZE);
+    PUT(heap_listp + (1 * WSIZE), PACK(DSIZE, 1)); // 프롤로그 헤더
+    PUT(heap_listp + (2 * WSIZE), PACK(DSIZE, 1)); // 프롤로그 푸터
+    PUT(heap_listp + (3 * WSIZE), PACK(0, 1)); // 에필로그 헤더
+    heap_listp += (2 * WSIZE); // heap_listp가 블록의 주소를 가리키도록 설정한다.
 
-    current_block = heap_listp;
+    current_block = heap_listp; // init된 상태이므로, 현재 블럭을 가장 첫 블럭을 가리키도록 한다.
 
-    if (extend_heap(CHUNKSIZE / WSIZE) == NULL) {
-        return -1;
-    }
     return 0;
 }
 
@@ -114,73 +117,87 @@ int mm_init(void) {
  *     Always allocate a block whose size is a multiple of the alignment.
  */
 void *mm_malloc(size_t size) {
-    size_t asize;
-    size_t extendsize;
-    char *bp;
+    size_t asize; // Adjusted size. Alignment에 맞도록 조정된 사이즈
+    size_t extendsize; // 더 늘어나야 하는 사이즈
+    char *bp; // 블럭 포인터
 
+    // heap_listp가 설정되지 않은 상태라면, 초기화 되지 않았다는 뜻이므로 초기화를 진행한다.
     if (heap_listp == 0) {
         mm_init();
     }
 
+    // size가 0이라면, malloc을 진행하지 않아도 되므로, 미리 종료하낟.
     if (size == 0) {
         return NULL;
     }
 
     if (size <= DSIZE) {
+        // 할당해야 하는 크기가 DSIZE보다 작다면, 2 * DSIZE로 최소 크기를 맞춰준다.
         asize = 2 * DSIZE;
     } else {
+        // 아니라면, 아래와 같은 수식을 통해 alignment를 맞춘다.
         asize = DSIZE * ((size + (DSIZE) + (DSIZE - 1)) / DSIZE);
     }
 
+    // 우선 힙에 해당 사이즈가 들어갈 공간이 있는지 find_fit을 통해 탐색한다.
     if ((bp = find_fit(asize)) != NULL) {
-        place(bp, asize);
+        place(bp, asize); // find_fit으로 결과를 찾았다면, place를 통해 해당 위치에 allocate를 진행한다.
 #ifdef DEBUG
-        num_expected_free_blocks--;
-        mm_check();
+        num_expected_free_blocks--; // fit 된 위치에 allocate 되었을 때, free block의 개수는 1 줄어드는 것이 예측되므로, 1을 줄여준다.
+        mm_check(); // 종료되기 전, 디버깅 함수를 호출한다.
 #endif
         return bp;
     }
 
+    // find_fit으로 적절한 공간을 찾지 못하였으므로, extend_heap을 이용해 힙을 늘려준다.
     extendsize = MAX(asize, CHUNKSIZE);
     if ((bp = extend_heap(extendsize)) == NULL) {
         return NULL;
     }
-    place(bp, asize);
+    place(bp, asize); // 공간이 늘어났으므로, place를 통해 해당 위치에 allocate를 진행한다.
 
 #ifdef DEBUG
-    mm_check();
+    mm_check(); // 종료되기 전, 디버깅 함수를 호출한다.
 #endif
 
     return bp;
 }
 
 /*
- * mm_free - Freeing a block does nothing.
+ * mm_free - 블럭을 free하는 역할을 수행한다.
+ * 주어진 블럭을 적절히 free하고, coalesce를 진행한다.
  */
 void mm_free(void *ptr) {
+    // 주어진 주소가 적절하지 않은 경우이므로, 바로 종료한다.
     if (ptr == 0) {
         return;
     }
 
 #ifdef DEBUG
+    // 블럭이 free 될때, free block의 개수가 1 증가하는 것이 예측되므로, 1 더해준다.
     if(IS_BLOCK_ALLOCATED(ptr)){
         ++num_expected_free_blocks;
     }
 #endif
 
-    size_t size = GET_SIZE(HDRP(ptr));
+    size_t size = GET_SIZE(HDRP(ptr)); // 할당 해제하고자 하는 블럭의 크기를 구한다.
 
+    // heap_listp가 적절하지 않은 값인 경우, 초기화를 진행한다.
     if (heap_listp == 0) {
         mm_init();
     }
 
-    DELETE_TAG(HDRP(NEXT_BLKP(ptr)));
+    DELETE_TAG(HDRP(NEXT_BLKP(ptr))); // 태그 삭제
 
+    // allocation 정보 삭제
     PUT_WITH_TAG(HDRP(ptr), PACK(size, 0));
     PUT_WITH_TAG(FTRP(ptr), PACK(size, 0));
+
+    // coalesce 수행
     coalesce(ptr);
 
 #ifdef DEBUG
+    // 함수가 종료되기 전 디버깅 함수 호출
     mm_check();
 #endif
 
