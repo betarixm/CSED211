@@ -59,7 +59,7 @@
 
 
 // 인자로 주어진 크기만큼 mem_sbrk로 힙을 확장하는 함수
-static void *extend_heap(size_t words);
+void *extend_heap(size_t words);
 
 // 특정 주소에 특정 사이즈의 블럭을 allocate 하는 함수
 static void place(void *bp, size_t asize);
@@ -71,14 +71,14 @@ static void *find_fit(size_t asize);
 static void *coalesce(void *bp);
 
 // 인접하면서 연속하는 free 블럭들의 크기 합을 반환하는 함수
-static int extend_heap_recycle(void *ptr, size_t size);
+int extend_heap_recycle(void *ptr, size_t size);
 
 // 힙의 consistency 를 체크하는 디버깅용 함수
 static int mm_check();
 
 // DEBUG 모드를 활성화하여 mm_check()를 각 함수 호출마다 실행되도록 하는 지정자
 // 아래 주석을 해제하여 활성화할 수 있다.
-#define DEBUG
+// #define DEBUG
 
 static char *heap_listp = 0; // 힙의 첫 주소를 가리키는 포인터
 static char *current_block; // 현재 작업 중인 블럭을 가리키는 포인터
@@ -329,100 +329,141 @@ void *mm_realloc(void *ptr, size_t size) {
     return new_ptr;
 }
 
-static int extend_heap_recycle(void *ptr, size_t size) {
-    int result = 0;
-    void *cur;
-    size = ALIGN(size);
-
+/*
+ * extend_heap_recycle - 주어진 주소로부터 연속된 free 블럭을 요구한 크기 이상이 될 때까지 모아서 그 크기를 반환한다.
+ */
+int extend_heap_recycle(void *ptr, size_t size) {
+    int result = 0; // 결과 크기를 담을 변수
+    void *cur; // 포인터 커서
+    size = ALIGN(size); // 크기를 우선 정렬한다.
+    
+    // 주어진 포인터로부터 탐색을 진행한다.
     for (cur = NEXT_BLKP(ptr); (!IS_BLOCK_ALLOCATED(cur)) && GET_SIZE(HDRP(cur)) > 0; cur = NEXT_BLKP(cur)) {
+        // 탐색을 진행하는 동안, 사이즈를 더한다.
         result += (int)GET_SIZE(HDRP(cur));
 #ifdef DEBUG
+        // 예측 블럭 정보를 업데이트 한다.
         --num_expected_blocks;
         --num_expected_free_blocks;
 #endif
         if (result > size) {
+            // 사이즈가 충분해 졌을 때, 반복을 종료한다.
             break;
         }
     }
-
+    
+    // 크기를 반환한다.
     return result;
 
 }
 
-static void *extend_heap(size_t words) {
-    char *bp;
-    size_t size;
+/*
+ * extend_heap - 주어진 크기만큼 힙을 확장시키는 역할을 수행한다.
+ */
+void *extend_heap(size_t words) {
+    char *bp; // 블럭 포인터
+    size_t size; // 사이즈
 
-    size = ALIGN(words);
+    size = ALIGN(words); // 주어진 사이즈를 align한다.
+
+    // mem_sbrk로 공간을 확보한다.
     if ((long) (bp = mem_sbrk(size)) == -1) {
         return NULL;
     }
+
 #ifdef DEBUG
+    // 블럭 증가가 예측되므로, 증가시켜준다.
     num_expected_blocks++;
 #endif
+
+    // 확보된 공간에 헤더와 푸터를 설정한다.
     PUT(HDRP(bp), PACK(size, 0));
     PUT(FTRP(bp), PACK(size, 0));
     PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));
 
+    // coalesce를 진행한다.
     return coalesce(bp);
 }
 
+/*
+ * coalesce - 연속된 free 블럭들을 합치는 역할을 수행한다.
+ * 이전 블럭과 다음 블럭의 할당 여부에 따라서 크게 4가지로 나뉘어 작동한다.
+ */
 static void *coalesce(void *bp) {
-    size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp))) || GET_TAG(HDRP(PREV_BLKP(bp)));
-    size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
-    size_t size = GET_SIZE(HDRP(bp));
+    size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp))) || GET_TAG(HDRP(PREV_BLKP(bp))); // 이전 블럭의 할당 여부
+    size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp))); // 이후 블럭의 할당 여부
+    size_t size = GET_SIZE(HDRP(bp)); // 현재 블럭의 사이즈
 
     if (prev_alloc && next_alloc) {
+        // 앞 뒤 둘 다 할당되어 있을 경우, 바로 반환한다.
         return bp;
     } else if (prev_alloc && !next_alloc) {
+        // 다음 블럭이 할당되어 있지 않다면, 다음 블럭까지 확장을 진행하여 두 블럭을 합친다.
         size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
         PUT_WITH_TAG(HDRP(bp), PACK(size, 0));
         PUT_WITH_TAG(FTRP(bp), PACK(size, 0));
 #ifdef DEBUG
+        // 이때, 전체 블럭 개수는 1 감소한다.
         --num_expected_blocks;
         --num_expected_free_blocks;
 #endif
     } else if (!prev_alloc && next_alloc) {
+        // 이전 블럭이 할당되어 있지 않다면, 이전 블럭까지 확장을 진행하여 두 블럭을 합친다.
         size += GET_SIZE((HDRP(PREV_BLKP(bp))));
         PUT_WITH_TAG(FTRP(bp), PACK(size, 0));
         PUT_WITH_TAG(HDRP(PREV_BLKP(bp)), PACK(size, 0));
         bp = PREV_BLKP(bp);
 #ifdef DEBUG
+        // 이때, 전체 블럭 개수는 1 감소한다.
         --num_expected_blocks;
         --num_expected_free_blocks;
 #endif
     } else {
+        // 이전 블럭과 다음 블럭이 모두 할당되어 있지 않다면, 확장을 진행하여 세 블럭을 합친다.
         size += (GET_SIZE(HDRP(PREV_BLKP(bp))) + GET_SIZE(FTRP(NEXT_BLKP(bp))));
         PUT_WITH_TAG(HDRP(PREV_BLKP(bp)), PACK(size, 0));
         PUT_WITH_TAG(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
         bp = PREV_BLKP(bp);
 #ifdef DEBUG
+        // 이때, 전체 블럭 개수는 2 감소한다.
         num_expected_blocks -= 2;
         num_expected_free_blocks -= 2;
 #endif
     }
     if ((current_block > (char *) bp) && (current_block < NEXT_BLKP(bp))) {
+        // current 블럭의 위치를 업데이트 해준다.
         current_block = bp;
     }
     return bp;
 }
 
+/*
+ * find_fit - 주어진 사이즈의 블럭이 들어갈 적절한 위치를 찾아서 반환한다.
+ * current_block으로부터 뒤의 공간에 대해서는 first-fit을 통해 위치를 찾고,
+ * 앞선 탐색으로부터 찾지 못했을 경우에는 heap의 처음부터 current_block 까지에 대해 best_fit을 수행하여 적절한 위치를 찾는다.
+ */
 static void *find_fit(size_t asize) {
-    char *current_block_backup = current_block;
-    char *best_block = NULL;
+    char *current_block_backup = current_block; // 현재 블럭의 위치를 미리 백업
+    char *best_block = NULL; // 최선의 블럭 포인터
 
-    int size_current, size_best;
+    int size_current, size_best; // 크기 변수
+
+    // 현재 블럭으로부터 탐색을 진행한다.
     for (; GET_SIZE(HDRP(current_block)) > 0; current_block = NEXT_BLKP(current_block)) {
         size_current = GET_SIZE(HDRP(current_block));
         if ((asize <= size_current) && (!GET_ALLOC(HDRP(current_block))) && (!(GET_TAG(HDRP(current_block))))) {
+            // 넣고자 하는 크기보다 크고, 할당되지 않은 블럭을 발견했다면, 해당 블럭의 주소를 반환한다.
             return current_block;
         }
     }
 
+    // 처음부터 탐색을 진행한다.
     for (current_block = heap_listp; current_block < current_block_backup; current_block = NEXT_BLKP(current_block)) {
         size_current = GET_SIZE(HDRP(current_block));
         if ((asize <= size_current) && (!GET_ALLOC(HDRP(current_block))) && (!(GET_TAG(HDRP(current_block))))) {
+            // 넣고자 하는 크기보다 크고, 할당되지 않은 블럭을 발견했을 때,
             if (best_block == NULL || (size_current < size_best)) {
+                // best_block이 NULL이거나, 찾은 크기가 최선 크기보다 작다면 best_block을 업데이트한다.
                 best_block = current_block;
                 size_best = size_current;
             }
@@ -433,30 +474,30 @@ static void *find_fit(size_t asize) {
 }
 
 /*
- * place - Place block of asize bytes at start of free block bp
- *         and split if remainder would be at least minimum block size
+ * place - free 블럭에 주어진 사이즈의 블럭을 할당하는 작업을 수행한다.
+ * 만약, 블럭에 공간이 많이 남는다면 split을 수행한다.
  */
 static void place(void *bp, size_t asize) {
-    size_t ptr_size = GET_SIZE(HDRP(bp));
-    size_t remainder = ptr_size - asize;
+    size_t ptr_size = GET_SIZE(HDRP(bp)); // 현재 블럭의 크기를 구한다.
+    size_t remainder = ptr_size - asize; // 남은 공간의 크기를 구한다.
     if (remainder >= 2 * DSIZE) {
-        /* Split block */
-        PUT_WITH_TAG(HDRP(bp), PACK(asize, 1)); /* Block header */
-        PUT_WITH_TAG(FTRP(bp), PACK(asize, 1)); /* Block footer */
-        PUT(HDRP(NEXT_BLKP(bp)), PACK(remainder, 0)); /* Next header */
-        PUT(FTRP(NEXT_BLKP(bp)), PACK(remainder, 0)); /* Next footer */
+        // 남은 공간이 최소 공간보다 크다면, split한다.
+        PUT_WITH_TAG(HDRP(bp), PACK(asize, 1)); // 블럭 헤더
+        PUT_WITH_TAG(FTRP(bp), PACK(asize, 1)); // 블럭 푸터
+        PUT(HDRP(NEXT_BLKP(bp)), PACK(remainder, 0)); // split 된 블럭의 헤더
+        PUT(FTRP(NEXT_BLKP(bp)), PACK(remainder, 0)); // split 된 블럭의 푸터
 #ifdef DEBUG
+        // 이때, free block이 1개 늘어난다.
         num_expected_blocks++;
         num_expected_free_blocks++;
 #endif
     } else {
-        /* Do not split block */
-        PUT_WITH_TAG(HDRP(bp), PACK(ptr_size, 1)); /* Block header */
-        PUT_WITH_TAG(FTRP(bp), PACK(ptr_size, 1)); /* Block footer */
+        // 공간이 충분하지 않으므로, split을 진행하지 않는다.
+        PUT_WITH_TAG(HDRP(bp), PACK(ptr_size, 1)); // 블럭 헤더
+        PUT_WITH_TAG(FTRP(bp), PACK(ptr_size, 1)); // 블럭 푸터
     }
 }
 
-#ifdef DEBUG
 /*
  * mm_check - Heap Consistency Checker
  * return -1 at error. else, return 0.
@@ -465,8 +506,8 @@ static void place(void *bp, size_t asize) {
 static int mm_check() {
     /* Below is suggested check list in "malloclab.pdf" */
 
-    char* cursor;
-    int num_free_blocks, num_alloc_blocks, num_coalesce_errs, num_overlap_blocks, num_unaligned_blocks;
+    char* cursor; // 블럭 탐색을 위한 커서
+    int num_free_blocks, num_alloc_blocks, num_coalesce_errs, num_overlap_blocks, num_unaligned_blocks; // 블럭 종류에 따른 개수
     printf("\n[+] DEBUG STATUS\n");
 
     /*
@@ -478,29 +519,39 @@ static int mm_check() {
     num_free_blocks = -1, num_alloc_blocks = -1;
 
     for(cursor = heap_listp; cursor < (char*)mem_heap_hi(); cursor = NEXT_BLKP(cursor)) {
+        // 모든 블럭에 대해 탐색을 진행하면서,
         if (GET_ALLOC(HDRP(cursor))) {
+            // 할당된 블럭이라면, 할당된 블럭 개수를 늘리고,
             num_alloc_blocks++;
         } else {
+            // 그렇지 않은 블럭이라면, free된 블럭 개수를 늘린다.
             num_free_blocks++;
         }
     }
 
+    // 실제 블럭 정보와, 예측되는 블럭 정보를 출력한다.
     printf("    * Actual: All (%d), Allocated (%d), Freed (%d)\n", num_alloc_blocks + num_free_blocks, num_alloc_blocks, num_free_blocks);
     printf("    * Expect: All (%d), Allocated (%d), Freed (%d)\n", num_expected_blocks, num_expected_blocks - num_expected_free_blocks, num_expected_free_blocks);
 
     if((num_expected_blocks - num_expected_free_blocks) != num_alloc_blocks) {
+        // 만약, 예측과 다르다면 경고를 출력한다.
         printf("    " RED "[ ERRO ]" RESET " The number of function call and allocated block is not matched.\n");
         printf("             Expected allocated: %d, Actual allocated: %d\n", num_expected_blocks - num_expected_free_blocks, num_alloc_blocks);
     } else {
+        // 아니라면, PASS 했음을 출력한다.
         printf("    " GRN "[ PASS ]" RESET " It seems good :) \n");
     }
     printf("\n");
 
     /*
      * Are there any contiguous free blocks that somehow escaped coalescing?
+     * - coalescing이 모두 적절히 수행되었는지 체크한다.
+     * - 2개의 연속된 free 블럭이 있는지 확인하여 체크할 것이다.
      */
     printf("  - Check any contiguous free blocks that somehow escaped coalescing...\n");
-    num_coalesce_errs = 0;
+    num_coalesce_errs = 0; // coalesce 되지 않은 블럭의 개수
+
+    // 모든 블럭에 대해 탐색을 진행하면서, 연속된 free 블럭이 있다면 블럭의 개수에 1 더한다.
     for(cursor=current_block; GET_SIZE(HDRP(NEXT_BLKP(cursor))) > 0; cursor=NEXT_BLKP(cursor)) {
         if ((!IS_BLOCK_ALLOCATED(cursor)) && (!IS_BLOCK_ALLOCATED(NEXT_BLKP(cursor)))) {
             num_coalesce_errs++;
@@ -514,6 +565,7 @@ static int mm_check() {
     }
 
     if(num_coalesce_errs != 0) {
+        // 블럭 개수가 0이 아니라면, 에러를 출력한다.
         printf("    " RED "[ ERRO ]" RESET " The number of contiguous free blocks: %d\n", num_coalesce_errs);
     } else {
         printf("    " GRN "[ PASS ]" RESET " It seems good :) \n");
@@ -536,7 +588,9 @@ static int mm_check() {
      */
     printf("  - Check any blocks overlap...\n");
 
-    num_overlap_blocks = 0;
+    num_overlap_blocks = 0; // overlap 블럭 개수
+
+    // 모든 블럭에 대해 탐색하면서, overlap 되는 블럭이 있다면, 블럭의 개수를 증가시킨다.
     for(cursor=current_block; GET_SIZE(HDRP(cursor)) > 0; cursor=NEXT_BLKP(cursor)) {
         if (IS_BLOCK_ALLOCATED(NEXT_BLKP(cursor)) && (cursor + GET_SIZE(HDRP(cursor)) > NEXT_BLKP(cursor))) {
             num_overlap_blocks++;
@@ -550,6 +604,7 @@ static int mm_check() {
     }
 
     if(num_overlap_blocks != 0) {
+        // 오버랩된 블럭의 개수가 0이 아니라면, 에러를 출력한다.
         printf("    " RED "[ ERRO ]" RESET " The number of overlapping blocks: %d\n", num_overlap_blocks);
     } else {
         printf("    " GRN "[ PASS ]" RESET " It seems good :) \n");
@@ -561,7 +616,9 @@ static int mm_check() {
      * - 모든 힙 블록 포인터가 align 된 주소를 가리키는지 확인한다.
      */
     printf("  - Check the pointers in a heap block point to valid (aligned) heap addresses...\n");
-    num_unaligned_blocks = 0;
+    num_unaligned_blocks = 0; // align 되지 않는 블럭의 개수
+
+    // 모든 블럭에 대해 탐색을 진행하면서, 크기가 align 되었는지 확인한다.
     for(cursor=current_block; GET_SIZE(HDRP(cursor)) > 0; cursor=NEXT_BLKP(cursor)) {
         if (IS_BLOCK_ALLOCATED(NEXT_BLKP(cursor)) && ((NEXT_BLKP(cursor) - cursor)%ALIGNMENT != 0)) {
             num_unaligned_blocks++;
@@ -575,6 +632,7 @@ static int mm_check() {
     }
 
     if(num_unaligned_blocks++ != 0) {
+        // align 되지 않은 블럭의 개수가 0이 아니라면, 에러를 출력한다.
         printf("    " RED "[ ERRO ]" RESET " The number of un-aligned blocks: %d\n", num_unaligned_blocks);
     } else {
         printf("    " GRN "[ PASS ]" RESET " It seems good :) \n");
@@ -582,4 +640,3 @@ static int mm_check() {
     printf("\n");
     return 0;
 }
-#endif
