@@ -165,7 +165,7 @@ void *mm_malloc(size_t size) {
 
 /*
  * mm_free - 블럭을 free하는 역할을 수행한다.
- * 주어진 블럭을 적절히 free하고, coalesce를 진행한다.
+ * 주어진 블럭의 allocate 정보를 삭제하여 적절히 free 한 후에, coalesce를 진행한다.
  */
 void mm_free(void *ptr) {
     // 주어진 주소가 적절하지 않은 경우이므로, 바로 종료한다.
@@ -204,20 +204,28 @@ void mm_free(void *ptr) {
 }
 
 /*
- * mm_realloc - Implemented simply in terms of mm_malloc and mm_free
+ * mm_realloc - 주어진 블럭을 realloc하는 역할을 수행한다.
+ * realloc을 수행할 때, 다음 블럭이 free되어 있다면, 해당 블럭으로 확장을 진행하고,
+ * 이전 블럭의 free되어 있다면, 이전 블럭으로 확장을 진행한다.
+ * 다음 블럭으로 확장을 진행할 때에는, extend_heap_recycle을 이용하여 혹시 coalesce 가 되지 않은 블럭을 모두 합친다.
+ * 만약 이전 블럭과 다음 블럭이 모두 비어있지 않다면, malloc을 다시 수행한다.
  */
 void *mm_realloc(void *ptr, size_t size) {
-    void *new_ptr = ptr;
-    size_t body_size = size;
-    int expandable_size;
-    int extendsize;
-    int remaining_size;
-    int is_next_block_allocated, is_prev_block_allocated, is_reallocated = FALSE;
+    void *new_ptr = ptr; // reallocation의 결과가 될 주소
+    size_t body_size = size; // 블럭 몸체의 크기
+    int expandable_size; // 확장할 수 있는 크기
+    int extendsize; // 확장 해야할 크기
+    int remaining_size; // 확장에 남은 크기
+    int is_next_block_allocated = FALSE; // 다음 블럭 할당 여부
+    int is_prev_block_allocated = FALSE; // 이전 블럭 할당 여부
+    int is_reallocated = FALSE; // 재할당 여부
 
+    // 크기가 0이라면 바로 반환한다.
     if (size == 0) {
         return NULL;
     }
 
+    // malloc을 수행할 때와 같이, 사이즈를 align한다.
     if (body_size <= DSIZE) {
         body_size = 2 * DSIZE;
     } else {
@@ -226,70 +234,98 @@ void *mm_realloc(void *ptr, size_t size) {
 
     body_size += PADDING;
 
+    // 남은 크기를 구한다.
     remaining_size = GET_SIZE(HDRP(ptr)) - body_size;
 
     if (remaining_size < 0) {
-        is_next_block_allocated = IS_BLOCK_ALLOCATED(NEXT_BLKP(ptr));
-        is_prev_block_allocated = IS_BLOCK_ALLOCATED(PREV_BLKP(ptr));
+        // 남은 크기가 0보다 작다면, 확장을 진행해야 하므로, 확장을 수행한다.
+
+        is_next_block_allocated = IS_BLOCK_ALLOCATED(NEXT_BLKP(ptr)); // 다음 블럭 할당 여부
+        is_prev_block_allocated = IS_BLOCK_ALLOCATED(PREV_BLKP(ptr)); // 이전 블럭 할당 여부
+
         if (!is_next_block_allocated) {
-            expandable_size = remaining_size;
+            // 다음 블럭이 할당되지 않았다면, 다음 블럭으로의 확장 가능성을 검토한다.
+
+            expandable_size = remaining_size; // 우선 남은 크기를 확장 가능한 크기로 지정한다.
 #ifdef DEBUG
+            // 아래 정보가 extend_heap_recycle에서 수정되기 때문에, 예측되는 블럭 개수 정보를 백업한다.
             int count_free_back = num_expected_free_blocks;
             int count_malloc_back = num_expected_blocks;
 #endif
             if (remaining_size < 0) {
+                // 남은 크기가 0보다 작다면, extend_heap_recycle 을 통해 더 확장할 수 있는 크기를 가져온다.
                 expandable_size += extend_heap_recycle(ptr, -remaining_size);
             }
+
             if (expandable_size < 0) {
+                // 확장 가능한 크기가 0보다 작다면, extend를 수행한다.
 #ifdef DEBUG
+                // 앞서 백업해둔 값을 복구한다.
                 num_expected_blocks = count_malloc_back;
                 num_expected_free_blocks = count_free_back;
 #endif
+                // 최소 청크 크기를 만족하는, 확장할 크기를 결정한다.
                 extendsize = MAX(-expandable_size, CHUNKSIZE);
+
+                // extend_heap을 통해 확장을 수행한다.
                 if (extend_heap(extendsize) == NULL) {
                     return NULL;
                 }
 #ifdef DEBUG
+                // extend_heap에서 예측 블럭 개수를 증가하지만, realloc에서는 증가하지 않으므로, 1을 빼서 복구한다.
                 --num_expected_blocks;
 #endif
+                // 확장 가능한 크기에 방금 구한 크기를 더한다.
                 expandable_size += extendsize;
             }
+
+            // 현재 몸체 크기에 확장 가능한 크기를 더해서 블럭을 확장한다.
             PUT(HDRP(ptr), PACK(body_size + expandable_size, 1));
             PUT(FTRP(ptr), PACK(body_size + expandable_size, 1));
-            is_reallocated = TRUE;
+            is_reallocated = TRUE; // 재할당이 완료되었음을 마킹한다.
         }
 
         if (!is_reallocated && !is_prev_block_allocated) {
-            new_ptr = PREV_BLKP(ptr);
+            // 재할당이 진행되지 않았고, 이전 블럭이 할당되지 않은 상태라면, 이전 블럭으로의 확장을 시도한다.
+            new_ptr = PREV_BLKP(ptr); // 이전 블럭의 주소를 가져온다.
+
+            // 확장 가능한 크기를 검토한다.
             expandable_size = remaining_size + (int)GET_SIZE(HDRP(new_ptr));
             if (expandable_size >= 0) {
+                // 확장 가능한 크기가 0 이상이라면, 확장을 진행한다.
 #ifdef DEBUG
+                // 이때, 예측되는 블럭의 개수를 업데이트 한다.
+                --num_expected_blocks;
                 --num_expected_free_blocks;
 #endif
+                // 이전 블럭으로부터 크기를 업데이트하여 재할당을 수행한다.
                 PUT(HDRP(new_ptr), PACK(body_size + expandable_size, 1));
                 PUT(FTRP(new_ptr), PACK(body_size + expandable_size, 1));
+                // 데이터를 이전 포인터로 옮긴다.
                 memmove(new_ptr, ptr, MIN(size, body_size));
-                is_reallocated = TRUE;
+                is_reallocated = TRUE; // 재할당 되었음을 표시한다.
             }
         }
 
         if (!is_reallocated) {
+            // 최종적으로 재할당이 진행되지 않았다면, 새로 malloc을 진행해서 메모리를 할당받는다.
             new_ptr = mm_malloc(body_size - DSIZE);
-            memmove(new_ptr, ptr, MIN(size, body_size));
-            mm_free(ptr);
+            memmove(new_ptr, ptr, MIN(size, body_size)); // 정보 이전
+            mm_free(ptr); // 기존 할당 받은 공간은 해제한다.
         }
-
-        remaining_size = GET_SIZE(HDRP(new_ptr)) - body_size;
+        remaining_size = GET_SIZE(HDRP(new_ptr)) - body_size; // 남은 크기 업데이트
     }
 
-    if (remaining_size < 2 * PADDING) {
+    if (remaining_size < 2 * PADDING) { // 남은 크기가 2*패딩 보다 작다면 태그를 업데이트 한다.
         PUT_TAG(HDRP(NEXT_BLKP(new_ptr)));
     }
 
 #ifdef DEBUG
+    // 함수가 종료되기 전에 디버깅 함수를 호출한다.
     mm_check();
 #endif
 
+    // 재할당된 주소를 반환한다.
     return new_ptr;
 }
 
