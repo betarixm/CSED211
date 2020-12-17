@@ -1,7 +1,8 @@
 /*
- * mm-naive.c - The fastest, least memory-efficient malloc package.
- *
- *
+ * mm.c - The fastest, least memory-efficient malloc package.
+ * 이 프로그램은 동적 할당을 naive 하게 구현한 프로그램으로, implicit free list를 이용하여 구현하였다.
+ * 메모리 할당 정책으로 first-fit과 best-fit을 경우에 따라 조합하여 throughput 을 개선하였으며,
+ * realloc 과정에서 다음 및 이전 블럭으로의 확장을 malloc을 호출하지 않고 진행하도록 구현하여 단편화를 개선하였다.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -574,7 +575,7 @@ static int mm_check() {
 
     /*
      * Is every free block actually in the free list?
-     * - Free list를 사용하고 있지 않기 때문에, 해당 검사는 수행하지 않는다.
+     * - 이 구현은 implicit list를 이용하고 있기 때문에, 해당 검사는 수행하지 않는다.
      */
 
     /*
