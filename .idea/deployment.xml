@@ -1,21 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" autoUpload="Always" serverName="PLUS-BETA (4643658b-d47c-4b5e-9607-87996c850714)">
+  <component name="PublishConfigData" autoUpload="Always" serverName="PBS-DOCKER (f506758e-51e2-4711-93cf-9c88d9d767ee)">
     <serverData>
-      <paths name="PBS-DOCKER (e8e93191-0222-4f91-a3a8-ef7c25eb1e9b)">
+      <paths name="PBS-DOCKER (f506758e-51e2-4711-93cf-9c88d9d767ee)">
         <serverdata>
           <mappings>
-            <mapping deploy="/tmp/tmp.5v3e29A3EI" local="$PROJECT_DIR$" />
-          </mappings>
-          <excludedPaths>
-            <excludedPath local="true" path="$PROJECT_DIR$/cmake-build-debug" />
-          </excludedPaths>
-        </serverdata>
-      </paths>
-      <paths name="Remote Host (b2ad2551-7c59-4f70-acbf-4677ca4ea6b1)">
-        <serverdata>
-          <mappings>
-            <mapping deploy="/home/beta/beta/CSED/CSED211" local="$PROJECT_DIR$" />
+            <mapping deploy="/tmp/tmp.nRTgCjubne" local="$PROJECT_DIR$" />
           </mappings>
           <excludedPaths>
             <excludedPath local="true" path="$PROJECT_DIR$/cmake-build-debug" />
