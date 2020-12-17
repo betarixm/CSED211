@@ -211,7 +211,7 @@ void *mm_realloc(void *ptr, size_t size) {
             if (expandable_size >= 0) {
                 PUT(HDRP(new_ptr), PACK(body_size + expandable_size, 1));
                 PUT(FTRP(new_ptr), PACK(body_size + expandable_size, 1));
-                memcpy(new_ptr, ptr, MIN(size, body_size));
+                memmove(new_ptr, ptr, MIN(size, body_size));
                 is_reallocated = TRUE;
             }
         }
