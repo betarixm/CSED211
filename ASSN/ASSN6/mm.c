@@ -1,13 +1,7 @@
 /*
  * mm-naive.c - The fastest, least memory-efficient malloc package.
  *
- * In this naive approach, a block is allocated by simply incrementing
- * the brk pointer.  A block is pure payload. There are no headers or
- * footers.  Blocks are never coalesced or reused. Realloc is
- * implemented directly using mm_malloc and mm_free.
  *
- * NOTE TO STUDENTS: Replace this header comment with your own header
- * comment that gives a high level description of your solution.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,69 +31,66 @@
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
 
-#define PACK(size, alloc)  (((unsigned int)(size)) | ((unsigned int)(alloc)))
+#define PACK(size, alloc)  (((unsigned int)(size)) | ((unsigned int)(alloc))) // 헤더를 패킹하는 매크로
 
-#define GET(p) (*(unsigned int *)(p))
+#define GET(p) (*(unsigned int *)(p)) // 특정 주소를 참조해서 값을 가져오는 매크로
 
-#define PUT(p, val) (*(unsigned int *)(p) = (val))
-#define PUT_WITH_TAG(p, val) (*(unsigned int *)(p) = (val) | GET_TAG(p))
+#define PUT(p, val) (*(unsigned int *)(p) = (val)) // 특정 주소를 참조해서 값을 기록하는 매크로
+#define PUT_WITH_TAG(p, val) (*(unsigned int *)(p) = (val) | GET_TAG(p)) // 특정 주소를 참조해서 태그와 함께 값을 기록하는 매크로
 
-#define PUT_TAG(p) (*(unsigned int*) (p) = GET(p) | 0x2u)
-#define DELETE_TAG(p) (*(unsigned int*) (p) = GET(p) & ~0x2u)
+#define PUT_TAG(p) (*(unsigned int*) (p) = GET(p) | 0x2u) // 특정 주소에 태그와 함께 값을 기록하는 매크로
+#define DELETE_TAG(p) (*(unsigned int*) (p) = GET(p) & ~0x2u) // 태그를 제거하는 매크로
 
-#define GET_SIZE(p) (GET(p) & ~0x7u)
-#define GET_ALLOC(p) (GET(p) & 0x1u)
-#define GET_TAG(p) (GET(p) & 0x2u)
+#define GET_SIZE(p) (GET(p) & ~0x7u) // 블럭의 크기를 반환하는 매크로
+#define GET_ALLOC(p) (GET(p) & 0x1u) // 블럭의 allocation 여부를 반환하는 매크로
+#define GET_TAG(p) (GET(p) & 0x2u) // 블럭의 태그를 반환하는 매크로
 
-#define HDRP(bp) ((char *)(bp) - WSIZE)
-#define FTRP(bp) ((char *)(bp) + GET_SIZE(HDRP(bp)) - DSIZE)
+#define HDRP(bp) ((char *)(bp) - WSIZE) // 블럭의 헤더 주소를 반환하는 매크로
+#define FTRP(bp) ((char *)(bp) + GET_SIZE(HDRP(bp)) - DSIZE) // 블럭의 푸터 주소를 반환하는 매크로
 
-#define NEXT_BLKP(bp) ((char *)(bp) + GET_SIZE(((char *)(bp) - WSIZE)))
-#define PREV_BLKP(bp) ((char *)(bp) - GET_SIZE(((char *)(bp) - DSIZE)))
+#define NEXT_BLKP(bp) ((char *)(bp) + GET_SIZE(((char *)(bp) - WSIZE))) // 블럭의 다음 블럭 주소를 반환하는 매크로
+#define PREV_BLKP(bp) ((char *)(bp) - GET_SIZE(((char *)(bp) - DSIZE))) // 블럭의 이전 블럭 주소를 반환하는 매크로
 
-#define IS_BLOCK_ALLOCATED(ptr) (GET_ALLOC(HDRP(ptr)) && GET_SIZE(HDRP(ptr)))
+#define IS_BLOCK_ALLOCATED(ptr) (GET_ALLOC(HDRP(ptr)) && GET_SIZE(HDRP(ptr))) // 블럭의 할당 여부를 반환하는 매크로
 
-#define RED   "\x1B[31m"
-#define GRN   "\x1B[32m"
-#define RESET "\x1B[0m"
-
-team_t team = {
-        /* Team name */
-        "Gwon Minjae",
-        "Gwon Minjae",
-        "20190084",
-        "",
-        ""
-};
+#define RED   "\x1B[31m" // ANSI Escape Code: 색상 지정 - 빨강
+#define GRN   "\x1B[32m" // ANSI Escape Code: 색상 지정 - 초록
+#define RESET "\x1B[0m"  // ANSI Escape Code: 색상 지정 - 초기화
 
 
+// 인자로 주어진 크기만큼 mem_sbrk로 힙을 확장하는 함수
 static void *extend_heap(size_t words);
 
+// 특정 주소에 특정 사이즈의 블럭을 allocate 하는 함수
 static void place(void *bp, size_t asize);
 
+// 특정 사이즈가 들어갈 알맞은 위치를 찾아주는 함수
 static void *find_fit(size_t asize);
 
+// 인접 free 블럭들을 coalesce 하는 함수
 static void *coalesce(void *bp);
 
+// 인접하면서 연속하는 free 블럭들의 크기 합을 반환하는 함수
 static int extend_heap_recycle(void *ptr, size_t size);
 
+// 힙의 consistency 를 체크하는 디버깅용 함수
 static int mm_check();
 
+// DEBUG 모드를 활성화하여 mm_check()를 각 함수 호출마다 실행되도록 하는 지정자
+// 아래 주석을 해제하여 활성화할 수 있다.
 #define DEBUG
 
-#ifdef DEBUG
-#define VERBOSE
-int count_free = 0, count_block = 0;
-#endif
+static char *heap_listp = 0; // 힙의 첫 주소를 가리키는 포인터
+static char *current_block; // 현재 작업 중인 블럭을 가리키는 포인터
 
-static char *heap_listp = 0;
-static char *current_block;
+int num_expected_free_blocks = 0; // [디버깅] 예측되는 free block의 개수
+int num_expected_blocks = 0; // [디버깅] 예측되는 block의 개수
 
 /*
  * mm_init - initialize the malloc package.
  */
 int mm_init(void) {
-    count_free = 0; count_block = -1;
+    num_expected_free_blocks = 0; num_expected_blocks = -1;
     if ((heap_listp = mem_sbrk(4 * WSIZE)) == (void *) -1) {
         return -1;
     }
@@ -144,7 +135,7 @@ void *mm_malloc(size_t size) {
     if ((bp = find_fit(asize)) != NULL) {
         place(bp, asize);
 #ifdef DEBUG
-        count_free--;
+        num_expected_free_blocks--;
         mm_check();
 #endif
         return bp;
@@ -173,7 +164,7 @@ void mm_free(void *ptr) {
 
 #ifdef DEBUG
     if(IS_BLOCK_ALLOCATED(ptr)){
-        ++count_free;
+        ++num_expected_free_blocks;
     }
 #endif
 
@@ -226,23 +217,23 @@ void *mm_realloc(void *ptr, size_t size) {
         if (!is_next_block_allocated) {
             expandable_size = remaining_size;
 #ifdef DEBUG
-            int count_free_back = count_free;
-            int count_malloc_back = count_block;
+            int count_free_back = num_expected_free_blocks;
+            int count_malloc_back = num_expected_blocks;
 #endif
             if (remaining_size < 0) {
                 expandable_size += extend_heap_recycle(ptr, -remaining_size);
             }
             if (expandable_size < 0) {
 #ifdef DEBUG
-                count_block = count_malloc_back;
-                count_free = count_free_back;
+                num_expected_blocks = count_malloc_back;
+                num_expected_free_blocks = count_free_back;
 #endif
                 extendsize = MAX(-expandable_size, CHUNKSIZE);
                 if (extend_heap(extendsize) == NULL) {
                     return NULL;
                 }
 #ifdef DEBUG
-                --count_block;
+                --num_expected_blocks;
 #endif
                 expandable_size += extendsize;
             }
@@ -256,7 +247,7 @@ void *mm_realloc(void *ptr, size_t size) {
             expandable_size = remaining_size + (int)GET_SIZE(HDRP(new_ptr));
             if (expandable_size >= 0) {
 #ifdef DEBUG
-                --count_free;
+                --num_expected_free_blocks;
 #endif
                 PUT(HDRP(new_ptr), PACK(body_size + expandable_size, 1));
                 PUT(FTRP(new_ptr), PACK(body_size + expandable_size, 1));
@@ -293,8 +284,8 @@ static int extend_heap_recycle(void *ptr, size_t size) {
     for (cur = NEXT_BLKP(ptr); (!IS_BLOCK_ALLOCATED(cur)) && GET_SIZE(HDRP(cur)) > 0; cur = NEXT_BLKP(cur)) {
         result += (int)GET_SIZE(HDRP(cur));
 #ifdef DEBUG
-        --count_block;
-        --count_free;
+        --num_expected_blocks;
+        --num_expected_free_blocks;
 #endif
         if (result > size) {
             break;
@@ -314,7 +305,7 @@ static void *extend_heap(size_t words) {
         return NULL;
     }
 #ifdef DEBUG
-    count_block++;
+    num_expected_blocks++;
 #endif
     PUT(HDRP(bp), PACK(size, 0));
     PUT(FTRP(bp), PACK(size, 0));
@@ -335,8 +326,8 @@ static void *coalesce(void *bp) {
         PUT_WITH_TAG(HDRP(bp), PACK(size, 0));
         PUT_WITH_TAG(FTRP(bp), PACK(size, 0));
 #ifdef DEBUG
-        --count_block;
-        --count_free;
+        --num_expected_blocks;
+        --num_expected_free_blocks;
 #endif
     } else if (!prev_alloc && next_alloc) {
         size += GET_SIZE((HDRP(PREV_BLKP(bp))));
@@ -344,8 +335,8 @@ static void *coalesce(void *bp) {
         PUT_WITH_TAG(HDRP(PREV_BLKP(bp)), PACK(size, 0));
         bp = PREV_BLKP(bp);
 #ifdef DEBUG
-        --count_block;
-        --count_free;
+        --num_expected_blocks;
+        --num_expected_free_blocks;
 #endif
     } else {
         size += (GET_SIZE(HDRP(PREV_BLKP(bp))) + GET_SIZE(FTRP(NEXT_BLKP(bp))));
@@ -353,8 +344,8 @@ static void *coalesce(void *bp) {
         PUT_WITH_TAG(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
         bp = PREV_BLKP(bp);
 #ifdef DEBUG
-        count_block -= 2;
-        count_free -= 2;
+        num_expected_blocks -= 2;
+        num_expected_free_blocks -= 2;
 #endif
     }
     if ((current_block > (char *) bp) && (current_block < NEXT_BLKP(bp))) {
@@ -402,8 +393,8 @@ static void place(void *bp, size_t asize) {
         PUT(HDRP(NEXT_BLKP(bp)), PACK(remainder, 0)); /* Next header */
         PUT(FTRP(NEXT_BLKP(bp)), PACK(remainder, 0)); /* Next footer */
 #ifdef DEBUG
-        count_block++;
-        count_free++;
+        num_expected_blocks++;
+        num_expected_free_blocks++;
 #endif
     } else {
         /* Do not split block */
@@ -441,14 +432,12 @@ static int mm_check() {
         }
     }
 
-#ifdef VERBOSE
     printf("    * Actual: All (%d), Allocated (%d), Freed (%d)\n", num_alloc_blocks + num_free_blocks, num_alloc_blocks, num_free_blocks);
-    printf("    * Expect: All (%d), Allocated (%d), Freed (%d)\n", count_block, count_block-count_free, count_free);
-#endif
+    printf("    * Expect: All (%d), Allocated (%d), Freed (%d)\n", num_expected_blocks, num_expected_blocks - num_expected_free_blocks, num_expected_free_blocks);
 
-    if((count_block - count_free) != num_alloc_blocks) {
+    if((num_expected_blocks - num_expected_free_blocks) != num_alloc_blocks) {
         printf("    " RED "[ ERRO ]" RESET " The number of function call and allocated block is not matched.\n");
-        printf("             Expected allocated: %d, Actual allocated: %d\n", count_block - count_free, num_alloc_blocks);
+        printf("             Expected allocated: %d, Actual allocated: %d\n", num_expected_blocks - num_expected_free_blocks, num_alloc_blocks);
     } else {
         printf("    " GRN "[ PASS ]" RESET " It seems good :) \n");
     }
