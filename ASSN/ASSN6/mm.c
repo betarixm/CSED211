@@ -1,7 +1,7 @@
 /*
  * mm.c - The fastest, least memory-efficient malloc package.
  * 이 프로그램은 동적 할당을 naive 하게 구현한 프로그램으로, implicit free list를 이용하여 구현하였다.
- * 메모리 할당 정책으로 first-fit과 best-fit을 경우에 따라 조합하여 throughput 을 개선하였으며,
+ * 메모리 할당 정책으로 next-fit과 best-fit을 조합하여 사용함으로서 throughput과 단편화를 동시에 개선하였으며,
  * realloc 과정에서 다음 및 이전 블럭으로의 확장을 malloc을 호출하지 않고 진행하도록 구현하여 단편화를 개선하였다.
  */
 #include <stdio.h>
